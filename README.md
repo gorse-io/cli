@@ -8,14 +8,14 @@ Command-line tools for managing Gorse clusters. Migrated from
 With npm (Node.js 18 or later):
 
 ```sh
-npm install -g @gorse-io/cli
+npm install -g @gorse/cli
 gorse-cli --help
 ```
 
 Or run without a global installation:
 
 ```sh
-npx @gorse-io/cli --help
+npx @gorse/cli --help
 ```
 
 The npm package selects a prebuilt native binary through platform-specific optional
@@ -68,10 +68,10 @@ go build -o gorse-cli .
 ### Publishing npm packages
 
 The release workflow packages the same binaries uploaded by GoReleaser and publishes
-platform packages first, followed by `@gorse-io/cli` with exact-version optional
+platform packages first, followed by `@gorse/cli` with exact-version optional
 dependencies. Stable releases use npm's `latest` tag; prereleases use `next`.
 Configure the repository's `NPM_TOKEN` secret with permission to publish all
-`@gorse-io/cli*` packages in the npm organization before publishing a release.
+`@gorse/cli*` packages in the npm organization before publishing a release.
 The GitHub release tag must be a canonical npm SemVer version, optionally prefixed
 with `v` (for example, `v1.2.3` or `v1.2.3-rc.1`).
 

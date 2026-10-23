@@ -26,7 +26,7 @@ function stage(directory, manifest) {
 
 for (const target of platforms) {
   const name = `cli-${target.os}-${target.cpu}`;
-  const packageName = `@gorse-io/${name}`;
+  const packageName = `@gorse/${name}`;
   const directory = path.join(output, name);
   const executable = target.os === "win32" ? "gorse-cli.exe" : "gorse-cli";
   mkdirSync(path.join(directory, "bin"), { recursive: true });

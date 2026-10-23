@@ -1,5 +1,5 @@
 {
-  "name": "@gorse-io/cli",
+  "name": "@gorse/cli",
   "version": "0.0.0-dev",
   "description": "Command-line tools for managing Gorse clusters",
   "license": "Apache-2.0",
