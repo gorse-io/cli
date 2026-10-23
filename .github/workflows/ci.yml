@@ -17,3 +17,9 @@ jobs:
       - run: go vet ./...
       - run: go build -o gorse-cli .
       - run: sh -n install.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test npm/test/*.test.js
+        env:
+          GORSE_CLI_TEST_BINARY: ${{ github.workspace }}/gorse-cli

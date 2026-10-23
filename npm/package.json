@@ -1,0 +1,16 @@
+{
+  "name": "@gorse-io/cli",
+  "version": "0.0.0-dev",
+  "description": "Command-line tools for managing Gorse clusters",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": { "gorse-cli": "bin/gorse-cli.js" },
+  "engines": { "node": ">=18" },
+  "files": ["bin/gorse-cli.js"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gorse-io/cli.git",
+    "directory": "npm"
+  },
+  "publishConfig": { "access": "public" }
+}
