@@ -25,6 +25,12 @@ profile.cov
 go.work
 go.work.sum
 
+# npm and release artifacts
+node_modules/
+dist/
+*.tgz
+/gorse-cli
+
 # env file
 .env
 

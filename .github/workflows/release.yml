@@ -21,3 +21,33 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  npm:
+    needs: binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Download release binaries
+        run: gh release download "$RELEASE_TAG" --pattern 'gorse-cli_*' --dir dist/npm-binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Stage npm packages
+        run: node npm/scripts/build-packages.js "$RELEASE_TAG" dist/npm-binaries dist/npm
+      - name: Publish platform packages before the launcher
+        run: |
+          set -e
+          tag=latest
+          if [[ "$RELEASE_TAG" == *-* ]]; then tag=next; fi
+          for package in dist/npm/cli-*; do
+            npm publish "./$package" --access public --tag "$tag"
+          done
+          npm publish ./dist/npm/cli --access public --tag "$tag"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
