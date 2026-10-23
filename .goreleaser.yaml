@@ -1,0 +1,30 @@
+version: 2
+project_name: gorse-cli
+builds:
+  - id: gorse-cli
+    main: ./cmd/gorse-cli
+    binary: gorse-cli
+    env:
+      - CGO_ENABLED=0
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - linux_loong64
+      - linux_riscv64
+      - windows_amd64
+      - windows_arm64
+      - darwin_arm64
+    ldflags:
+      - >-
+        -X 'github.com/gorse-io/cli/internal/version.Version={{ .Version }}'
+        -X 'github.com/gorse-io/cli/internal/version.GitCommit={{ .Commit }}'
+        -X 'github.com/gorse-io/cli/internal/version.BuildTime={{ .Date }}'
+archives:
+  - id: gorse-cli
+    formats: [binary]
+    name_template: "gorse-cli_{{ .Os }}_{{ .Arch }}"
+checksum:
+  disable: true
+release:
+  replace_existing_artifacts: true
+  mode: keep-existing
