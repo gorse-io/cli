@@ -23,6 +23,44 @@ archives:
   - id: gorse-cli
     formats: [binary]
     name_template: "gorse-cli_{{ .Os }}_{{ .Arch }}"
+  - id: packages
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "gorse-cli_{{ .Os }}_{{ .Arch }}"
+scoops:
+  - name: gorse-cli
+    ids: [packages]
+    repository:
+      owner: gorse-io
+      name: scoop-bucket
+      branch: main
+      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
+    directory: bucket
+    homepage: "https://github.com/gorse-io/cli"
+    description: "Command-line tool for Gorse recommender system."
+    license: Apache-2.0
+    skip_upload: auto
+brews:
+  - name: gorse-cli
+    ids: [packages]
+    repository:
+      owner: gorse-io
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/gorse-io/cli"
+    description: "Command-line tool for Gorse cluster management"
+    license: Apache-2.0
+    skip_upload: auto
+    install: |
+      bin.install "gorse-cli"
+    test: |
+      output = shell_output("#{bin}/gorse-cli --version")
+      assert_match "Version:", output
+      assert_match version.to_s, output
 checksum:
   disable: true
 release:
