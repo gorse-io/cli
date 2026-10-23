@@ -2,7 +2,7 @@ version: 2
 project_name: gorse-cli
 builds:
   - id: gorse-cli
-    main: ./cmd/gorse-cli
+    main: .
     binary: gorse-cli
     env:
       - CGO_ENABLED=0
@@ -16,9 +16,9 @@ builds:
       - darwin_arm64
     ldflags:
       - >-
-        -X 'github.com/gorse-io/cli/internal/version.Version={{ .Version }}'
-        -X 'github.com/gorse-io/cli/internal/version.GitCommit={{ .Commit }}'
-        -X 'github.com/gorse-io/cli/internal/version.BuildTime={{ .Date }}'
+        -X 'main.Version={{ .Version }}'
+        -X 'main.GitCommit={{ .Commit }}'
+        -X 'main.BuildTime={{ .Date }}'
 archives:
   - id: gorse-cli
     formats: [binary]

@@ -15,5 +15,5 @@ jobs:
           go-version-file: go.mod
       - run: go test ./...
       - run: go vet ./...
-      - run: go build -o gorse-cli ./cmd/gorse-cli
+      - run: go build -o gorse-cli .
       - run: sh -n install.sh

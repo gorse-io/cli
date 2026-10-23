@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch/v5"
-	"github.com/gorse-io/cli/internal/version"
 	gorse "github.com/gorse-io/gorse-go"
 	adminclient "github.com/gorse-io/gorse/client"
 	"github.com/samber/lo"
@@ -38,7 +37,7 @@ var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		// Show version
 		if showVersion, _ := cmd.PersistentFlags().GetBool("version"); showVersion {
-			cmd.Println(version.BuildInfo())
+			cmd.Println(BuildInfo())
 			return
 		}
 		_ = cmd.Help()

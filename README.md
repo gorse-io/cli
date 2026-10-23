@@ -10,7 +10,7 @@ Build from source:
 ```sh
 git clone https://github.com/gorse-io/cli.git
 cd cli
-go build -o gorse-cli ./cmd/gorse-cli
+go build -o gorse-cli .
 ```
 
 Use a source checkout rather than `go install ...@latest`: this module includes
@@ -44,7 +44,7 @@ Contexts and API keys remain in the system keyring under the existing
 ```sh
 go test ./...
 go vet ./...
-go build -o gorse-cli ./cmd/gorse-cli
+go build -o gorse-cli .
 ```
 
 Tests start a real local Gorse Master with temporary SQLite stores. The Gorse
