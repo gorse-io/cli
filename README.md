@@ -63,7 +63,6 @@ Contexts and API keys remain in the system keyring under the existing
 go test ./...
 go vet ./...
 go build -o gorse-cli .
-GORSE_CLI_TEST_BINARY="$PWD/gorse-cli" node --test npm/test/*.test.js
 ```
 
 ### Publishing npm packages
