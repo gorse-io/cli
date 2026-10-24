@@ -18,22 +18,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest, windows-11-arm]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
       - name: Test shell installer
         if: runner.os != 'Windows'
-        env:
-          INSTALL_DIR: ${{ runner.temp }}/gorse-cli-install
         run: |
           sh install.sh
-          "$INSTALL_DIR/gorse-cli" --version
+          gorse-cli --version
       - name: Test PowerShell installer
         if: runner.os == 'Windows'
         shell: powershell
-        env:
-          INSTALL_DIR: ${{ runner.temp }}/gorse-cli-install
         run: |
           . ./install.ps1
           gorse-cli --version
