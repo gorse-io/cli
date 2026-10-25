@@ -21,6 +21,19 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  scoop:
+    needs: binaries
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Notify Scoop bucket
+        env:
+          GH_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: |
+          gh api --method POST repos/gorse-io/scoop-bucket/dispatches \
+            -f event_type=gorse-cli-release
   npm:
     needs: binaries
     runs-on: ubuntu-latest
