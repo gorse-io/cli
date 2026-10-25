@@ -21,6 +21,30 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  homebrew:
+    needs: binaries
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: homebrew
+      cancel-in-progress: false
+    steps:
+      - name: Bump macOS Homebrew formula
+        uses: mislav/bump-homebrew-formula-action@v4.2
+        with:
+          formula-name: gorse-cli
+          tag-name: ${{ github.event.release.tag_name }}
+          download-url: https://github.com/gorse-io/cli/releases/download/${{ github.event.release.tag_name }}/gorse-cli_darwin_arm64
+          homebrew-tap: gorse-io/homebrew-tap
+          push-to: gorse-io/homebrew-tap
+          create-branch: true
+          create-pullrequest: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # Token with Contents and Pull requests write access to gorse-io/homebrew-tap.
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
   scoop:
     needs: binaries
     if: ${{ !github.event.release.prerelease }}
