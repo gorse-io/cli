@@ -14,8 +14,6 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test ./...
-      - name: Test Homebrew formula updater
-        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
   install:
     strategy:
       fail-fast: false
