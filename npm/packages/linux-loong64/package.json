@@ -1,0 +1,23 @@
+{
+  "name": "@gorse/cli-linux-loong64",
+  "version": "0.0.0-dev",
+  "description": "Prebuilt Gorse CLI for linux-loong64",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gorse-io/cli.git",
+    "directory": "npm/packages/linux-loong64"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "loong64"
+  ],
+  "files": [
+    "bin"
+  ]
+}

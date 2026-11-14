@@ -71,12 +71,33 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - name: Download release binaries
-        run: gh release download "$RELEASE_TAG" --pattern 'gorse-cli_*' --dir dist/npm-binaries
+      - name: Download release binaries and prepare npm packages
+        run: |
+          set -e
+          gh release download "$RELEASE_TAG" --pattern 'gorse-cli_*' --dir dist/npm-binaries
+          version="${RELEASE_TAG#v}"
+          mkdir -p dist/npm/cli/bin
+          cp npm/package.json README.md LICENSE dist/npm/cli/
+          cp npm/bin/gorse-cli.js dist/npm/cli/bin/
+          for package in npm/packages/*; do
+            target="$(basename "$package")"
+            directory="dist/npm/cli-$target"
+            mkdir -p "$directory/bin"
+            cp "$package/package.json" README.md LICENSE "$directory/"
+            (cd "$directory" && npm version "$version" --no-git-tag-version)
+            npm --prefix dist/npm/cli pkg set "optionalDependencies.@gorse/cli-$target=$version"
+          done
+          cp dist/npm-binaries/gorse-cli_linux_amd64 dist/npm/cli-linux-x64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_linux_arm64 dist/npm/cli-linux-arm64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_linux_loong64 dist/npm/cli-linux-loong64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_linux_riscv64 dist/npm/cli-linux-riscv64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_windows_amd64.exe dist/npm/cli-win32-x64/bin/gorse-cli.exe
+          cp dist/npm-binaries/gorse-cli_windows_arm64.exe dist/npm/cli-win32-arm64/bin/gorse-cli.exe
+          cp dist/npm-binaries/gorse-cli_darwin_arm64 dist/npm/cli-darwin-arm64/bin/gorse-cli
+          chmod +x dist/npm/*/bin/*
+          (cd dist/npm/cli && npm version "$version" --no-git-tag-version)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Stage npm packages
-        run: node npm/scripts/build-packages.js "$RELEASE_TAG" dist/npm-binaries dist/npm
       - name: Publish platform packages before the launcher
         run: |
           set -e
