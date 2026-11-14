@@ -75,16 +75,35 @@ jobs:
         run: gh release download "$RELEASE_TAG" --pattern 'gorse-cli_*' --dir dist/npm-binaries
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Stage npm packages
-        run: node npm/scripts/build-packages.js "$RELEASE_TAG" dist/npm-binaries dist/npm
+      - name: Copy release binaries into platform packages
+        run: |
+          set -e
+          for package in npm/packages/*; do
+            mkdir -p "$package/bin"
+            cp README.md LICENSE "$package/"
+          done
+          cp dist/npm-binaries/gorse-cli_linux_amd64 npm/packages/linux-x64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_linux_arm64 npm/packages/linux-arm64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_linux_loong64 npm/packages/linux-loong64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_linux_riscv64 npm/packages/linux-riscv64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_windows_amd64.exe npm/packages/win32-x64/bin/gorse-cli.exe
+          cp dist/npm-binaries/gorse-cli_windows_arm64.exe npm/packages/win32-arm64/bin/gorse-cli.exe
+          cp dist/npm-binaries/gorse-cli_darwin_arm64 npm/packages/darwin-arm64/bin/gorse-cli
+          chmod +x npm/packages/*/bin/*
+          cp README.md LICENSE npm/
       - name: Publish platform packages before the launcher
         run: |
           set -e
+          version="${RELEASE_TAG#v}"
           tag=latest
-          if [[ "$RELEASE_TAG" == *-* ]]; then tag=next; fi
-          for package in dist/npm/cli-*; do
+          if [[ "$version" == *-* ]]; then tag=next; fi
+          for package in npm/packages/*; do
+            (cd "$package" && npm version "$version" --no-git-tag-version)
+            npm --prefix npm pkg set "optionalDependencies.@gorse/cli-$(basename "$package")=$version"
             npm publish "./$package" --access public --tag "$tag"
           done
-          npm publish ./dist/npm/cli --access public --tag "$tag"
+          cd npm
+          npm version "$version" --no-git-tag-version
+          npm publish . --access public --tag "$tag"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
