@@ -1,0 +1,23 @@
+{
+  "name": "@gorse/cli-win32-x64",
+  "version": "0.0.0-dev",
+  "description": "Prebuilt Gorse CLI for win32-x64",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gorse-io/cli.git",
+    "directory": "npm/packages/win32-x64"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin"
+  ]
+}

@@ -2,7 +2,6 @@
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { platforms } from "../platforms.js";
 
 const [tag, binaries, output] = process.argv.slice(2);
 const version = tag?.replace(/^v/, "");
@@ -16,7 +15,6 @@ const npmRoot = fileURLToPath(new URL("../", import.meta.url));
 const repoRoot = path.resolve(npmRoot, "..");
 const main = JSON.parse(readFileSync(path.join(npmRoot, "package.json"), "utf8"));
 main.version = version;
-main.optionalDependencies = {};
 
 function stage(directory, manifest) {
   mkdirSync(directory, { recursive: true });
@@ -24,19 +22,19 @@ function stage(directory, manifest) {
   for (const file of ["README.md", "LICENSE"]) copyFileSync(path.join(repoRoot, file), path.join(directory, file));
 }
 
-for (const target of platforms) {
-  const name = `cli-${target.os}-${target.cpu}`;
-  const packageName = `@gorse/${name}`;
+for (const packageName of Object.keys(main.optionalDependencies)) {
+  const name = packageName.split("/")[1];
+  const target = name.replace(/^cli-/, "");
+  const manifest = JSON.parse(readFileSync(path.join(npmRoot, "packages", target, "package.json"), "utf8"));
+  manifest.version = version;
+  const goos = manifest.os[0] === "win32" ? "windows" : manifest.os[0];
+  const goarch = manifest.cpu[0] === "x64" ? "amd64" : manifest.cpu[0];
   const directory = path.join(output, name);
-  const executable = target.os === "win32" ? "gorse-cli.exe" : "gorse-cli";
+  const executable = goos === "windows" ? "gorse-cli.exe" : "gorse-cli";
   mkdirSync(path.join(directory, "bin"), { recursive: true });
-  copyFileSync(path.join(binaries, `gorse-cli_${target.goos}_${target.goarch}${target.os === "win32" ? ".exe" : ""}`), path.join(directory, "bin", executable));
+  copyFileSync(path.join(binaries, `gorse-cli_${goos}_${goarch}${goos === "windows" ? ".exe" : ""}`), path.join(directory, "bin", executable));
   chmodSync(path.join(directory, "bin", executable), 0o755);
-  stage(directory, {
-    name: packageName, version, description: main.description, license: main.license,
-    repository: main.repository, publishConfig: main.publishConfig,
-    os: [target.os], cpu: [target.cpu], files: ["bin"],
-  });
+  stage(directory, manifest);
   main.optionalDependencies[packageName] = version;
 }
 const directory = path.join(output, "cli");
