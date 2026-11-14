@@ -71,39 +71,41 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - name: Download release binaries
-        run: gh release download "$RELEASE_TAG" --pattern 'gorse-cli_*' --dir dist/npm-binaries
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Copy release binaries into platform packages
+      - name: Download release binaries and prepare npm packages
         run: |
           set -e
+          gh release download "$RELEASE_TAG" --pattern 'gorse-cli_*' --dir dist/npm-binaries
+          version="${RELEASE_TAG#v}"
+          mkdir -p dist/npm/cli/bin
+          cp npm/package.json README.md LICENSE dist/npm/cli/
+          cp npm/bin/gorse-cli.js dist/npm/cli/bin/
           for package in npm/packages/*; do
-            mkdir -p "$package/bin"
-            cp README.md LICENSE "$package/"
+            target="$(basename "$package")"
+            directory="dist/npm/cli-$target"
+            mkdir -p "$directory/bin"
+            cp "$package/package.json" README.md LICENSE "$directory/"
+            (cd "$directory" && npm version "$version" --no-git-tag-version)
+            npm --prefix dist/npm/cli pkg set "optionalDependencies.@gorse/cli-$target=$version"
           done
-          cp dist/npm-binaries/gorse-cli_linux_amd64 npm/packages/linux-x64/bin/gorse-cli
-          cp dist/npm-binaries/gorse-cli_linux_arm64 npm/packages/linux-arm64/bin/gorse-cli
-          cp dist/npm-binaries/gorse-cli_linux_loong64 npm/packages/linux-loong64/bin/gorse-cli
-          cp dist/npm-binaries/gorse-cli_linux_riscv64 npm/packages/linux-riscv64/bin/gorse-cli
-          cp dist/npm-binaries/gorse-cli_windows_amd64.exe npm/packages/win32-x64/bin/gorse-cli.exe
-          cp dist/npm-binaries/gorse-cli_windows_arm64.exe npm/packages/win32-arm64/bin/gorse-cli.exe
-          cp dist/npm-binaries/gorse-cli_darwin_arm64 npm/packages/darwin-arm64/bin/gorse-cli
-          chmod +x npm/packages/*/bin/*
-          cp README.md LICENSE npm/
+          cp dist/npm-binaries/gorse-cli_linux_amd64 dist/npm/cli-linux-x64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_linux_arm64 dist/npm/cli-linux-arm64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_linux_loong64 dist/npm/cli-linux-loong64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_linux_riscv64 dist/npm/cli-linux-riscv64/bin/gorse-cli
+          cp dist/npm-binaries/gorse-cli_windows_amd64.exe dist/npm/cli-win32-x64/bin/gorse-cli.exe
+          cp dist/npm-binaries/gorse-cli_windows_arm64.exe dist/npm/cli-win32-arm64/bin/gorse-cli.exe
+          cp dist/npm-binaries/gorse-cli_darwin_arm64 dist/npm/cli-darwin-arm64/bin/gorse-cli
+          chmod +x dist/npm/*/bin/*
+          (cd dist/npm/cli && npm version "$version" --no-git-tag-version)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish platform packages before the launcher
         run: |
           set -e
-          version="${RELEASE_TAG#v}"
           tag=latest
-          if [[ "$version" == *-* ]]; then tag=next; fi
-          for package in npm/packages/*; do
-            (cd "$package" && npm version "$version" --no-git-tag-version)
-            npm --prefix npm pkg set "optionalDependencies.@gorse/cli-$(basename "$package")=$version"
+          if [[ "$RELEASE_TAG" == *-* ]]; then tag=next; fi
+          for package in dist/npm/cli-*; do
             npm publish "./$package" --access public --tag "$tag"
           done
-          cd npm
-          npm version "$version" --no-git-tag-version
-          npm publish . --access public --tag "$tag"
+          npm publish ./dist/npm/cli --access public --tag "$tag"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
