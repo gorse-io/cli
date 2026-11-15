@@ -7,6 +7,26 @@
 
 CLI for Gorse recommender system.
 
+## Commands
+
+Data commands use resource-first syntax:
+
+```sh
+gorse-cli item get <item-id>
+gorse-cli item list -n 10
+gorse-cli item list <query...> -n 10
+gorse-cli user get <user-id>
+gorse-cli user list -n 10
+gorse-cli feedback list --type click --user <user-id> -n 10
+gorse-cli category list
+```
+
+These replace `get item`, `get items`, `get user`, `get users`,
+`get feedback`, and `get categories`; the top-level `get` command is removed.
+Authentication flags, filters, and output formats are unchanged. The `context`,
+`pipeline`, `recommend`, `cluster-info`, `stats`, `ps`, `dump`, and `restore`
+commands retain their existing syntax.
+
 ## Install
 
 - Install using bash:

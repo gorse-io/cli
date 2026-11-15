@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"bytes"
@@ -30,6 +30,12 @@ import (
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
 )
+
+var rootCmd = &cobra.Command{Use: "gorse-cli", Short: "Gorse command line tool for cluster management"}
+
+func init() {
+	Register(rootCmd)
+}
 
 func executeRawCommand(root *cobra.Command, input string, args ...string) (string, error) {
 	buf := new(bytes.Buffer)
@@ -207,7 +213,7 @@ func (s *CLITestSuite) TestClusterInfo() {
 }
 
 func (s *CLITestSuite) TestGetCategories() {
-	s.requireCommandOutputLines([]string{"get", "categories"},
+	s.requireCommandOutputLines([]string{"category", "list"},
 		`^INDEX\s+VALUE$`,
 		`^0\s+books$`,
 		`^1\s+news$`,
@@ -309,7 +315,7 @@ func (s *CLITestSuite) TestRecommendUserToUser() {
 }
 
 func (s *CLITestSuite) TestGetUser() {
-	out, err := s.execute("get", "user", "alice")
+	out, err := s.execute("user", "get", "alice")
 	s.Require().NoError(err)
 	s.Require().Equal(`UserId: alice
 Comment: 
@@ -321,7 +327,7 @@ Labels:
 }
 
 func (s *CLITestSuite) TestGetUsers() {
-	out, err := s.execute("get", "users", "-n", "10")
+	out, err := s.execute("user", "list", "-n", "10")
 	s.Require().NoError(err)
 
 	lines := strings.Split(strings.TrimSpace(out), "\n")
@@ -333,7 +339,7 @@ func (s *CLITestSuite) TestGetUsers() {
 }
 
 func (s *CLITestSuite) TestGetItem() {
-	out, err := s.execute("get", "item", "item-1")
+	out, err := s.execute("item", "get", "item-1")
 	s.Require().NoError(err)
 	s.Require().Equal(`ItemId: item-1
 Comment: raw item
@@ -349,10 +355,10 @@ Labels:
 
 func (s *CLITestSuite) TestGetFeedback() {
 	tests := [][]string{
-		{"get", "feedback", "-n", "1"},
-		{"get", "feedback", "--type", "click", "--user", "alice", "-n", "1"},
-		{"get", "feedback", "--type", "click", "--item", "item-1", "-n", "1"},
-		{"get", "feedback", "--type", "click", "--user", "alice", "--item", "item-1", "-n", "1"},
+		{"feedback", "list", "-n", "1"},
+		{"feedback", "list", "--type", "click", "--user", "alice", "-n", "1"},
+		{"feedback", "list", "--type", "click", "--item", "item-1", "-n", "1"},
+		{"feedback", "list", "--type", "click", "--user", "alice", "--item", "item-1", "-n", "1"},
 	}
 	for _, args := range tests {
 		out, err := s.execute(args...)
@@ -368,13 +374,13 @@ func (s *CLITestSuite) TestGetFeedback() {
 		s.Require().NotContains(out, "└")
 	}
 
-	out, err := executeRawCommand(rootCmd, "", "get", "feedback", "click")
+	out, err := executeRawCommand(rootCmd, "", "feedback", "list", "click")
 	s.Require().Error(err)
 	s.Require().Contains(out, `unknown command "click"`)
 }
 
 func (s *CLITestSuite) TestGetItems() {
-	out, err := s.execute("get", "items", "-n", "10")
+	out, err := s.execute("item", "list", "-n", "10")
 	s.Require().NoError(err)
 
 	lines := strings.Split(strings.TrimSpace(out), "\n")
@@ -394,7 +400,7 @@ func (s *CLITestSuite) TestGetItems() {
 }
 
 func (s *CLITestSuite) TestSearchItems() {
-	out, err := s.execute("get", "items", "raw", "item", "-n", "10")
+	out, err := s.execute("item", "list", "raw", "item", "-n", "10")
 	s.Require().NoError(err)
 
 	lines := strings.Split(strings.TrimSpace(out), "\n")
