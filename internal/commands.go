@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	adminclient "github.com/gorse-io/gorse/client"
+	"github.com/gorse-io/gorse/client"
 	"github.com/spf13/cobra"
 )
 
@@ -64,9 +64,9 @@ func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
 	return endpoint, apiKey
 }
 
-func newClient(cmd *cobra.Command) *adminclient.AdminClient {
+func newClient(cmd *cobra.Command) *client.AdminClient {
 	endpoint, apiKey := requireEndpointAndKey(cmd)
-	return adminclient.NewAdminClient(endpoint, apiKey)
+	return client.NewAdminClient(endpoint, apiKey)
 }
 
 func init() {
@@ -89,6 +89,7 @@ func init() {
 	PipelineCmd.AddCommand(pipelineSchemaCmd)
 	PipelineCmd.AddCommand(pipelinePatchCmd)
 	PipelineCmd.AddCommand(pipelineResetCmd)
+	PipelineCmd.AddCommand(newPipelineItemToItemCmd(), newPipelineUserToUserCmd(), newPipelineNonPersonalizedCmd(), newPipelineExternalCmd(), newPipelineCollaborativeCmd())
 
 	applicationAddCmd.Flags().String("endpoint", "", "Gorse base URL (default: GORSE_ADMIN_ENDPOINT)")
 	applicationAddCmd.Flags().String("api-key", "", "Gorse admin API key (default: GORSE_ADMIN_API_KEY; prefer prompt to avoid shell history)")

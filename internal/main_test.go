@@ -15,7 +15,7 @@ import (
 	"time"
 	"unsafe"
 
-	adminclient "github.com/gorse-io/gorse/client"
+	"github.com/gorse-io/gorse/client"
 	"github.com/gorse-io/gorse/common/log"
 	"github.com/gorse-io/gorse/common/monitor"
 	"github.com/gorse-io/gorse/config"
@@ -501,6 +501,96 @@ func (s *CLITestSuite) TestDumpRestore() {
 	s.Require().Equal(data.FeedbackKey{FeedbackType: "click", UserId: "alice", ItemId: "item-1"}, feedback[0].FeedbackKey)
 }
 
+func (s *CLITestSuite) TestPipelineRecommenders() {
+	p := NewPipeline(client.NewAdminClient(s.endpoint, testAPIKey))
+	run := func(args ...string) string {
+		out, err := s.execute(append([]string{"pipeline"}, args...)...)
+		s.Require().NoError(err, out)
+		return out
+	}
+	run("item-to-item", "add", "managed", "--type", "users", "--column", "item.Labels")
+	item, err := p.GetItemToItem("managed")
+	s.Require().NoError(err)
+	s.Equal("users", item.Type)
+	run("item-to-item", "update", "managed", "--column=")
+	item, err = p.GetItemToItem("managed")
+	s.Require().NoError(err)
+	s.Empty(item.Column)
+	s.Equal("users", item.Type)
+	s.Contains(run("item-to-item", "list"), "managed")
+	s.Contains(run("item-to-item", "get", "managed"), "users")
+	run("item-to-item", "delete", "managed")
+	_, err = p.GetItemToItem("managed")
+	s.ErrorContains(err, "not found")
+	run("user-to-user", "add", "managed", "--type", "items", "--column", "item.Labels")
+	run("user-to-user", "update", "managed", "--column=")
+	user, err := p.GetUserToUser("managed")
+	s.Require().NoError(err)
+	s.Empty(user.Column)
+	s.Equal("items", user.Type)
+	s.Contains(run("user-to-user", "list"), "managed")
+	s.Contains(run("user-to-user", "get", "managed"), "items")
+	run("user-to-user", "delete", "managed")
+	_, err = p.GetUserToUser("managed")
+	s.ErrorContains(err, "not found")
+	run("non-personalized", "add", "managed", "--score", "1", "--filter", "true")
+	run("non-personalized", "update", "managed", "--filter=")
+	non, err := p.GetNonPersonalized("managed")
+	s.Require().NoError(err)
+	s.Empty(non.Filter)
+	s.Equal("1", non.Score)
+	s.Contains(run("non-personalized", "list"), "managed")
+	s.Contains(run("non-personalized", "get", "managed"), "1")
+	run("non-personalized", "delete", "managed")
+	_, err = p.GetNonPersonalized("managed")
+	s.ErrorContains(err, "not found")
+	scriptFile := filepath.Join(s.T().TempDir(), "script.js")
+	s.Require().NoError(os.WriteFile(scriptFile, []byte("return [];\n"), 0600))
+	run("external", "add", "managed", "--script-file", scriptFile)
+	ext, err := p.GetExternal("managed")
+	s.Require().NoError(err)
+	s.Equal("return [];\n", ext.Script)
+	run("external", "update", "managed", "--script=")
+	ext, err = p.GetExternal("managed")
+	s.Require().NoError(err)
+	s.Empty(ext.Script)
+	s.Contains(run("external", "list"), "managed")
+	s.Contains(run("external", "get", "managed"), "managed")
+	run("external", "delete", "managed")
+	_, err = p.GetExternal("managed")
+	s.ErrorContains(err, "not found")
+	before, err := p.GetCollaborative()
+	s.Require().NoError(err)
+	run("collaborative", "update", "--type", "none", "--fit-period", "2h", "--optimize-period", "0s")
+	collab, err := p.GetCollaborative()
+	s.Require().NoError(err)
+	s.Equal("none", collab.Type)
+	s.Equal(2*time.Hour, collab.FitPeriod)
+	s.Zero(collab.OptimizePeriod)
+	s.Equal(before.FitEpoch, collab.FitEpoch)
+	s.Contains(run("collaborative", "get"), "none")
+	for _, kind := range []string{"item-to-item", "user-to-user", "non-personalized", "external", "collaborative"} {
+		args := []string{"pipeline", kind, "update"}
+		if kind != "collaborative" {
+			args = append(args, "missing")
+		}
+		_, err = s.execute(args...)
+		s.ErrorContains(err, "no changes")
+	}
+	_, err = s.execute("pipeline", "external", "add", "conflict", "--script", "return [];", "--script-file", scriptFile)
+	s.Error(err)
+	_, err = s.execute("pipeline", "item-to-item", "add", "bad", "--type", "not-a-type")
+	s.Error(err)
+	_, err = p.GetItemToItem("bad")
+	s.ErrorContains(err, "not found")
+	// Establish an explicit reference: the default fixture uses implicit selection.
+	_, err = p.Patch([]byte(`[{"op":"replace","path":"/fallback/recommenders","value":["item-to-item/neighbors"]}]`))
+	s.Require().NoError(err)
+	// Explicit references must block deletion rather than being cascaded.
+	_, err = s.execute("pipeline", "item-to-item", "delete", "neighbors")
+	s.ErrorContains(err, "recommend.fallback.recommenders")
+}
+
 const testAPIKey = "secret"
 
 func newTestMaster(t *testing.T) (*master.Master, string) {
@@ -588,7 +678,7 @@ func waitForMaster(t *testing.T, endpoint string) {
 
 func waitForInitialTask(t *testing.T, endpoint string) {
 	t.Helper()
-	client := adminclient.NewAdminClient(endpoint, testAPIKey)
+	client := client.NewAdminClient(endpoint, testAPIKey)
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		tasks, err := client.GetTasks()
