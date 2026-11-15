@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorse-io/gorse/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,7 +62,7 @@ func TestPipelineItemLifecycle(t *testing.T) {
 	require.Equal(t, float64(42), r["item-to-item"].([]any)[0].(map[string]any)["future"])
 	require.Equal(t, "keep", r["future"])
 	require.Equal(t, true, m.value["future_root"])
-	require.NoError(t, p.AddItemToItem(config.ItemToItemConfig{Name: "third", Type: "auto"}))
+	require.NoError(t, p.AddItemToItem(ItemToItemConfig{Name: "third", Type: "auto"}))
 	list, err = p.ListItemToItem()
 	require.NoError(t, err)
 	require.Equal(t, []string{"first", "second", "third"}, []string{list[0].Name, list[1].Name, list[2].Name})
@@ -77,8 +76,8 @@ func TestPipelineItemLifecycle(t *testing.T) {
 func TestPipelineStrictMutations(t *testing.T) {
 	m := pipelineFixture()
 	p := NewPipeline(m)
-	require.ErrorContains(t, p.AddItemToItem(config.ItemToItemConfig{Name: "first", Type: "auto"}), "already exists")
-	require.ErrorContains(t, p.AddItemToItem(config.ItemToItemConfig{Name: " ", Type: "auto"}), "name")
+	require.ErrorContains(t, p.AddItemToItem(ItemToItemConfig{Name: "first", Type: "auto"}), "already exists")
+	require.ErrorContains(t, p.AddItemToItem(ItemToItemConfig{Name: " ", Type: "auto"}), "name")
 	require.ErrorContains(t, p.UpdateItemToItem("first", ItemToItemPatch{}), "no changes")
 	require.ErrorContains(t, p.UpdateItemToItem("missing", ItemToItemPatch{Type: pointer("auto")}), "not found")
 	require.ErrorContains(t, p.DeleteItemToItem("missing"), "not found")
@@ -103,7 +102,7 @@ func TestPipelineDeleteReferences(t *testing.T) {
 func TestPipelineOtherResources(t *testing.T) {
 	m := pipelineFixture()
 	p := NewPipeline(m)
-	require.NoError(t, p.AddUserToUser(config.UserToUserConfig{Name: "u", Type: "items", Column: "item.Labels"}))
+	require.NoError(t, p.AddUserToUser(UserToUserConfig{Name: "u", Type: "items", Column: "item.Labels"}))
 	require.NoError(t, p.UpdateUserToUser("u", UserToUserPatch{Column: pointer("")}))
 	u, err := p.GetUserToUser("u")
 	require.NoError(t, err)
@@ -112,7 +111,7 @@ func TestPipelineOtherResources(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, us, 1)
 	require.NoError(t, p.DeleteUserToUser("u"))
-	require.NoError(t, p.AddNonPersonalized(config.NonPersonalizedConfig{Name: "n", Score: "1", Filter: "true"}))
+	require.NoError(t, p.AddNonPersonalized(NonPersonalizedConfig{Name: "n", Score: "1", Filter: "true"}))
 	require.NoError(t, p.UpdateNonPersonalized("n", NonPersonalizedPatch{Filter: pointer("")}))
 	n, err := p.GetNonPersonalized("n")
 	require.NoError(t, err)
@@ -121,7 +120,7 @@ func TestPipelineOtherResources(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, ns, 1)
 	require.NoError(t, p.DeleteNonPersonalized("n"))
-	require.NoError(t, p.AddExternal(config.ExternalConfig{Name: "e", Script: "old"}))
+	require.NoError(t, p.AddExternal(ExternalConfig{Name: "e", Script: "old"}))
 	require.NoError(t, p.UpdateExternal("e", ExternalPatch{Script: pointer("")}))
 	e, err := p.GetExternal("e")
 	require.NoError(t, err)
@@ -155,7 +154,69 @@ func TestPipelineTransportErrors(t *testing.T) {
 	p := NewPipeline(m)
 	_, err := p.ListExternal()
 	require.ErrorContains(t, err, "offline")
-	require.ErrorContains(t, p.AddExternal(config.ExternalConfig{Name: "e"}), "offline")
+	require.ErrorContains(t, p.AddExternal(ExternalConfig{Name: "e"}), "offline")
 	_, err = p.Get()
 	require.ErrorContains(t, err, "offline")
+}
+
+func TestPipelineTypedConfigRoundTrip(t *testing.T) {
+	m := pipelineFixture()
+	recommend := m.value["recommend"].(map[string]any)
+	recommend["data_source"] = map[string]any{
+		"positive_feedback_types": []any{"star", "read>=3"},
+		"negative_feedback_types": []any{"dislike"},
+		"read_feedback_types":     []any{"read"},
+	}
+	recommend["cache_expire"] = "72h"
+	recommend["collaborative"].(map[string]any)["early_stopping"] = map[string]any{"patience": 5}
+	before, err := m.GetConfigMap()
+	require.NoError(t, err)
+
+	p := NewPipeline(m)
+	period := time.Duration(1<<53 + 1)
+	require.NoError(t, p.UpdateCollaborative(CollaborativePatch{FitPeriod: &period}))
+	got, err := p.GetCollaborative()
+	require.NoError(t, err)
+	require.Equal(t, period, got.FitPeriod)
+	require.Equal(t, 5, got.EarlyStopping.Patience)
+	recommend = m.value["recommend"].(map[string]any)
+	require.Equal(t, period.String(), recommend["collaborative"].(map[string]any)["fit_period"])
+	require.Equal(t, before["recommend"].(map[string]any)["data_source"], recommend["data_source"])
+	require.Equal(t, "72h", recommend["cache_expire"])
+	require.Equal(t, true, recommend["collaborative"].(map[string]any)["future"])
+}
+
+func TestPipelineDeletePreservesRemainingFields(t *testing.T) {
+	m := pipelineFixture()
+	p := NewPipeline(m)
+	require.NoError(t, p.DeleteItemToItem("second"))
+	recommend := m.value["recommend"].(map[string]any)
+	entries := recommend["item-to-item"].([]any)
+	require.Len(t, entries, 1)
+	require.Equal(t, "first", entries[0].(map[string]any)["name"])
+	require.Equal(t, float64(42), entries[0].(map[string]any)["future"])
+	require.NoError(t, p.DeleteItemToItem("first"))
+	list, err := p.ListItemToItem()
+	require.NoError(t, err)
+	require.Empty(t, list)
+}
+
+func TestPipelineRejectsMalformedTypedConfig(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		field string
+		value any
+	}{
+		{name: "invalid list", field: "item-to-item", value: "invalid"},
+		{name: "invalid entry", field: "item-to-item", value: []any{"invalid"}},
+		{name: "missing name", field: "item-to-item", value: []any{map[string]any{"type": "users"}}},
+		{name: "invalid duration", field: "collaborative", value: map[string]any{"fit_period": "invalid"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := pipelineFixture()
+			m.value["recommend"].(map[string]any)[test.field] = test.value
+			require.Error(t, NewPipeline(m).AddExternal(ExternalConfig{Name: "new"}))
+			require.Zero(t, m.writes)
+		})
+	}
 }

@@ -1,66 +1,92 @@
 package internal
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
 
 func TestApplications(t *testing.T) {
 	keyring.MockInit()
-	applications := NewApplications("test-applications")
+	t.Setenv("GORSE_ADMIN_ENDPOINT", "")
+	t.Setenv("GORSE_ADMIN_API_KEY", "")
+	root := &cobra.Command{Use: "gorse-cli"}
+	root.AddCommand(ApplicationCmd)
+	t.Cleanup(func() { root.RemoveCommand(ApplicationCmd) })
 
-	names, err := applications.List()
-	require.NoError(t, err)
-	require.Empty(t, names)
-	current, err := applications.Current()
-	require.NoError(t, err)
-	require.Empty(t, current)
-	require.NoError(t, applications.ClearCurrent())
+	// An empty keyring has no configured or current application.
+	stdout, stderr := Command(t, root, "application", "list")
+	require.Empty(t, stderr)
+	require.Equal(t, "No applications configured.\n", stdout)
+	stdout, stderr = Command(t, root, "application", "current")
+	require.Empty(t, stderr)
+	require.Equal(t, "No current application.\n", stdout)
 
-	require.NoError(t, applications.Upsert("dev", "http://localhost:8088", "test-key"))
-	app, err := applications.Get("dev")
-	require.NoError(t, err)
-	require.Equal(t, Application{Name: "dev", Endpoint: "http://localhost:8088", APIKey: "test-key"}, app)
-	current, err = applications.Current()
-	require.NoError(t, err)
-	require.Equal(t, "dev", current)
+	// Adding an application saves its endpoint and selects it without exposing the API key.
+	stdout, stderr = Command(t, root, "application", "add", "dev", "--endpoint", "http://localhost:8088", "--api-key", "test-key")
+	require.Empty(t, stderr)
+	require.Equal(t, "Application \"dev\" saved and selected.\n", stdout)
+	stdout, stderr = Command(t, root, "application", "current")
+	require.Empty(t, stderr)
+	require.Equal(t, "Name:\t\tdev\nEndpoint:\thttp://localhost:8088\n", stdout)
 
-	require.NoError(t, applications.Upsert("prod", "http://localhost:8089", "prod-key"))
-	require.NoError(t, applications.Upsert("dev", "http://localhost:8090", "updated-key"))
-	app, err = applications.Get("dev")
-	require.NoError(t, err)
-	require.Equal(t, Application{Name: "dev", Endpoint: "http://localhost:8090", APIKey: "updated-key"}, app)
-	names, err = applications.List()
-	require.NoError(t, err)
-	require.Equal(t, []string{"dev", "prod"}, names)
+	// Adding a second application makes it the current application.
+	stdout, stderr = Command(t, root, "application", "add", "prod", "--endpoint", "http://localhost:8089", "--api-key", "prod-key")
+	require.Empty(t, stderr)
+	require.Equal(t, "Application \"prod\" saved and selected.\n", stdout)
+	stdout, stderr = Command(t, root, "application", "current")
+	require.Empty(t, stderr)
+	require.Equal(t, "Name:\t\tprod\nEndpoint:\thttp://localhost:8089\n", stdout)
 
-	require.NoError(t, applications.SetCurrent("prod"))
-	current, err = applications.Current()
-	require.NoError(t, err)
-	require.Equal(t, "prod", current)
-	require.NoError(t, applications.ClearCurrent())
-	current, err = applications.Current()
-	require.NoError(t, err)
-	require.Empty(t, current)
-	require.NoError(t, applications.SetCurrent("dev"))
+	// Adding an existing name updates and selects it without creating a duplicate.
+	stdout, stderr = Command(t, root, "application", "add", "dev", "--endpoint", "http://localhost:8090", "--api-key", "updated-key")
+	require.Empty(t, stderr)
+	require.Equal(t, "Application \"dev\" saved and selected.\n", stdout)
+	stdout, stderr = Command(t, root, "application", "current")
+	require.Empty(t, stderr)
+	require.Equal(t, "Name:\t\tdev\nEndpoint:\thttp://localhost:8090\n", stdout)
+	// The list is sorted, marks the current application, and omits API keys.
+	stdout, stderr = Command(t, root, "application", "list")
+	require.Empty(t, stderr)
+	require.Equal(t, []string{
+		"CURRENT", "NAME", "ENDPOINT",
+		"*", "dev", "http://localhost:8090",
+		"prod", "http://localhost:8089",
+	}, strings.Fields(stdout))
 
-	require.NoError(t, applications.Delete("dev"))
-	_, err = applications.Get("dev")
-	require.ErrorContains(t, err, `application "dev" not found`)
-	names, err = applications.List()
-	require.NoError(t, err)
-	require.Equal(t, []string{"prod"}, names)
-	current, err = applications.Current()
-	require.NoError(t, err)
-	require.Equal(t, "prod", current)
-	require.NoError(t, applications.Delete("prod"))
-	names, err = applications.List()
-	require.NoError(t, err)
-	require.Empty(t, names)
-	current, err = applications.Current()
-	require.NoError(t, err)
-	require.Empty(t, current)
-	require.ErrorContains(t, applications.Delete("prod"), `application "prod" not found`)
+	// Switching applications changes the current selection while retaining saved endpoints.
+	stdout, stderr = Command(t, root, "application", "use", "prod")
+	require.Empty(t, stderr)
+	require.Equal(t, "Switched to application \"prod\".\n", stdout)
+	stdout, stderr = Command(t, root, "application", "current")
+	require.Empty(t, stderr)
+	require.Equal(t, "Name:\t\tprod\nEndpoint:\thttp://localhost:8089\n", stdout)
+	stdout, stderr = Command(t, root, "application", "use", "dev")
+	require.Empty(t, stderr)
+	require.Equal(t, "Switched to application \"dev\".\n", stdout)
+
+	// Deleting the current application selects the remaining application.
+	stdout, stderr = Command(t, root, "application", "delete", "dev")
+	require.Empty(t, stderr)
+	require.Equal(t, "Application \"dev\" deleted.\n", stdout)
+	stdout, stderr = Command(t, root, "application", "current")
+	require.Empty(t, stderr)
+	require.Equal(t, "Name:\t\tprod\nEndpoint:\thttp://localhost:8089\n", stdout)
+	stdout, stderr = Command(t, root, "application", "list")
+	require.Empty(t, stderr)
+	require.Equal(t, []string{"CURRENT", "NAME", "ENDPOINT", "*", "prod", "http://localhost:8089"}, strings.Fields(stdout))
+
+	// Deleting the last application clears both the list and the current selection.
+	stdout, stderr = Command(t, root, "application", "delete", "prod")
+	require.Empty(t, stderr)
+	require.Equal(t, "Application \"prod\" deleted.\n", stdout)
+	stdout, stderr = Command(t, root, "application", "list")
+	require.Empty(t, stderr)
+	require.Equal(t, "No applications configured.\n", stdout)
+	stdout, stderr = Command(t, root, "application", "current")
+	require.Empty(t, stderr)
+	require.Equal(t, "No current application.\n", stdout)
 }
