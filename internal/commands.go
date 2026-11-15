@@ -70,33 +70,30 @@ func newClient(cmd *cobra.Command) *client.AdminClient {
 }
 
 func init() {
-	ApplicationCmd.AddCommand(applicationAddCmd)
-	ApplicationCmd.AddCommand(applicationListCmd)
-	ApplicationCmd.AddCommand(applicationUseCmd)
-	ApplicationCmd.AddCommand(applicationDeleteCmd)
-	ApplicationCmd.AddCommand(applicationCurrentCmd)
+	ApplicationCmd.AddCommand(
+		applicationAddCmd,
+		applicationListCmd,
+		applicationUseCmd,
+		applicationDeleteCmd,
+		applicationCurrentCmd,
+	)
 	CategoryCmd.AddCommand(getCategoriesCmd)
-	UserCmd.AddCommand(getUserCmd, getUsersCmd)
-	ItemCmd.AddCommand(getItemCmd, getItemsCmd)
+	UserCmd.AddCommand(
+		getUserCmd,
+		getUsersCmd,
+	)
+	ItemCmd.AddCommand(
+		getItemCmd,
+		getItemsCmd,
+	)
 	FeedbackCmd.AddCommand(getFeedbackCmd)
-	RecommendCmd.AddCommand(recommendUserCmd)
-	RecommendCmd.AddCommand(getLatestCmd)
-	RecommendCmd.AddCommand(getNonPersonalizedCmd)
-	RecommendCmd.AddCommand(getItemToItemCmd)
-	RecommendCmd.AddCommand(getUserToUserCmd)
-
-	applicationAddCmd.Flags().String("endpoint", "", "Gorse base URL (default: GORSE_ADMIN_ENDPOINT)")
-	applicationAddCmd.Flags().String("api-key", "", "Gorse admin API key (default: GORSE_ADMIN_API_KEY; prefer prompt to avoid shell history)")
-	for _, cmd := range []*cobra.Command{
-		getCategoriesCmd, PsCmd,
-		GetStatsCmd, getUserCmd, getUsersCmd, getItemCmd, getItemsCmd, getFeedbackCmd, getLatestCmd,
-		getNonPersonalizedCmd, recommendUserCmd, getItemToItemCmd, getUserToUserCmd,
-		DumpCmd, RestoreCmd,
-	} {
-		cmd.Flags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
-		cmd.Flags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
-		cmd.Flags().String("application", "", "Gorse CLI application name")
-	}
+	RecommendCmd.AddCommand(
+		recommendUserCmd,
+		getLatestCmd,
+		getNonPersonalizedCmd,
+		getItemToItemCmd,
+		getUserToUserCmd,
+	)
 
 	getUsersCmd.Flags().IntP("n", "n", 0, "Number of returned users")
 	getItemsCmd.Flags().IntP("n", "n", 0, "Number of returned items")

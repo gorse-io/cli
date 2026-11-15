@@ -21,12 +21,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
 
-	jsonpatch "github.com/evanphx/json-patch/v5"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -49,33 +47,15 @@ func marshal(cmd *cobra.Command, value any) error {
 var pipelineGetCmd = &cobra.Command{
 	Use: "get", Short: "Get recommendation pipeline configuration", Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).Get()
-		if err != nil {
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		return marshal(cmd, formatConfigMap(value))
-	},
-}
-var pipelineSchemaCmd = &cobra.Command{
-	Use: "schema", Short: "Get recommendation pipeline configuration schema", Args: cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).Schema()
+		value, err := encodePipeline(*p)
 		if err != nil {
 			return err
 		}
 		return marshal(cmd, value)
-	},
-}
-var pipelinePatchCmd = &cobra.Command{
-	Use: "patch <json-patch>", Short: "Patch recommendation pipeline configuration values", Args: cobra.ExactArgs(1),
-	Example: `  gorse-cli pipeline patch '[{"op":"replace","path":"/cache_size","value":1000}]'`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).Patch([]byte(args[0]))
-		if err != nil {
-			return err
-		}
-		printStruct(cmd, value)
-		return nil
 	},
 }
 var pipelineResetCmd = &cobra.Command{
@@ -90,7 +70,7 @@ var pipelineResetCmd = &cobra.Command{
 			fmt.Fprintln(cmd.OutOrStdout(), "Pipeline reset canceled")
 			return nil
 		}
-		value, err := NewPipeline(newClient(cmd)).Reset()
+		value, err := newClient(cmd).ResetConfig()
 		if err != nil {
 			return err
 		}
@@ -103,13 +83,6 @@ var pipelineResetCmd = &cobra.Command{
 	},
 }
 
-func pipelineStringPatch(cmd *cobra.Command, name string) *string {
-	if !cmd.Flags().Changed(name) {
-		return nil
-	}
-	value, _ := cmd.Flags().GetString(name)
-	return &value
-}
 func pipelineHasChanges(cmd *cobra.Command, names ...string) error {
 	for _, name := range names {
 		if cmd.Flags().Changed(name) {
@@ -118,17 +91,13 @@ func pipelineHasChanges(cmd *cobra.Command, names ...string) error {
 	}
 	return fmt.Errorf("no changes supplied")
 }
-func pipelineScript(cmd *cobra.Command) (*string, error) {
+func pipelineScript(cmd *cobra.Command) (string, error) {
 	if cmd.Flags().Changed("script-file") {
 		path, _ := cmd.Flags().GetString("script-file")
 		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		value := string(data)
-		return &value, nil
+		return string(data), err
 	}
-	return pipelineStringPatch(cmd, "script"), nil
+	return cmd.Flags().GetString("script")
 }
 
 var pipelineItemToItemCmd = &cobra.Command{
@@ -143,11 +112,11 @@ var pipelineItemToItemListCmd = &cobra.Command{
 	Short: "list item-to-item recommender configuration",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).ListItemToItem()
-		if err != nil {
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		return marshal(cmd, value)
+		return marshal(cmd, p.ItemToItem)
 	},
 }
 
@@ -156,11 +125,20 @@ var pipelineItemToItemGetCmd = &cobra.Command{
 	Short: "get item-to-item recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).GetItemToItem(args[0])
-		if err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		return marshal(cmd, value)
+		for _, value := range p.ItemToItem {
+			if value.Name == name {
+				return marshal(cmd, value)
+			}
+		}
+		return fmt.Errorf("item-to-item %q not found", name)
 	},
 }
 
@@ -169,13 +147,26 @@ var pipelineItemToItemAddCmd = &cobra.Command{
 	Short: "add item-to-item recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		typ, _ := cmd.Flags().GetString("type")
-		column, _ := cmd.Flags().GetString("column")
-		value := ItemToItemConfig{Name: args[0], Type: typ, Column: column}
-		if err := NewPipeline(newClient(cmd)).AddItemToItem(value); err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "add succeeded:", args[0])
+		for _, value := range p.ItemToItem {
+			if value.Name == name {
+				return fmt.Errorf("item-to-item %q already exists", name)
+			}
+		}
+		typ, _ := cmd.Flags().GetString("type")
+		column, _ := cmd.Flags().GetString("column")
+		p.ItemToItem = append(p.ItemToItem, ItemToItemConfig{Name: name, Type: typ, Column: column})
+		if err := p.Save(); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "add succeeded:", name)
 		return nil
 	},
 }
@@ -188,11 +179,31 @@ var pipelineItemToItemUpdateCmd = &cobra.Command{
 		if err := pipelineHasChanges(cmd, "type", "column"); err != nil {
 			return err
 		}
-		if err := NewPipeline(newClient(cmd)).UpdateItemToItem(args[0], ItemToItemPatch{Type: pipelineStringPatch(cmd, "type"), Column: pipelineStringPatch(cmd, "column")}); err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "update succeeded:", args[0])
-		return nil
+		for i, value := range p.ItemToItem {
+			if value.Name != name {
+				continue
+			}
+			if cmd.Flags().Changed("type") {
+				p.ItemToItem[i].Type, _ = cmd.Flags().GetString("type")
+			}
+			if cmd.Flags().Changed("column") {
+				p.ItemToItem[i].Column, _ = cmd.Flags().GetString("column")
+			}
+			if err := p.Save(); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "update succeeded:", name)
+			return nil
+		}
+		return fmt.Errorf("item-to-item %q not found", name)
 	},
 }
 
@@ -201,11 +212,29 @@ var pipelineItemToItemDeleteCmd = &cobra.Command{
 	Short: "delete item-to-item recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := NewPipeline(newClient(cmd)).DeleteItemToItem(args[0]); err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "delete succeeded:", args[0])
-		return nil
+		for i, value := range p.ItemToItem {
+			if value.Name != name {
+				continue
+			}
+			if err := checkPipelineReferences(p, "item-to-item", name); err != nil {
+				return err
+			}
+			p.ItemToItem = slices.Delete(p.ItemToItem, i, i+1)
+			if err := p.Save(); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "delete succeeded:", name)
+			return nil
+		}
+		return fmt.Errorf("item-to-item %q not found", name)
 	},
 }
 
@@ -221,11 +250,11 @@ var pipelineUserToUserListCmd = &cobra.Command{
 	Short: "list user-to-user recommender configuration",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).ListUserToUser()
-		if err != nil {
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		return marshal(cmd, value)
+		return marshal(cmd, p.UserToUser)
 	},
 }
 
@@ -234,11 +263,20 @@ var pipelineUserToUserGetCmd = &cobra.Command{
 	Short: "get user-to-user recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).GetUserToUser(args[0])
-		if err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		return marshal(cmd, value)
+		for _, value := range p.UserToUser {
+			if value.Name == name {
+				return marshal(cmd, value)
+			}
+		}
+		return fmt.Errorf("user-to-user %q not found", name)
 	},
 }
 
@@ -247,13 +285,26 @@ var pipelineUserToUserAddCmd = &cobra.Command{
 	Short: "add user-to-user recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		typ, _ := cmd.Flags().GetString("type")
-		column, _ := cmd.Flags().GetString("column")
-		value := UserToUserConfig{Name: args[0], Type: typ, Column: column}
-		if err := NewPipeline(newClient(cmd)).AddUserToUser(value); err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "add succeeded:", args[0])
+		for _, value := range p.UserToUser {
+			if value.Name == name {
+				return fmt.Errorf("user-to-user %q already exists", name)
+			}
+		}
+		typ, _ := cmd.Flags().GetString("type")
+		column, _ := cmd.Flags().GetString("column")
+		p.UserToUser = append(p.UserToUser, UserToUserConfig{Name: name, Type: typ, Column: column})
+		if err := p.Save(); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "add succeeded:", name)
 		return nil
 	},
 }
@@ -266,11 +317,31 @@ var pipelineUserToUserUpdateCmd = &cobra.Command{
 		if err := pipelineHasChanges(cmd, "type", "column"); err != nil {
 			return err
 		}
-		if err := NewPipeline(newClient(cmd)).UpdateUserToUser(args[0], UserToUserPatch{Type: pipelineStringPatch(cmd, "type"), Column: pipelineStringPatch(cmd, "column")}); err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "update succeeded:", args[0])
-		return nil
+		for i, value := range p.UserToUser {
+			if value.Name != name {
+				continue
+			}
+			if cmd.Flags().Changed("type") {
+				p.UserToUser[i].Type, _ = cmd.Flags().GetString("type")
+			}
+			if cmd.Flags().Changed("column") {
+				p.UserToUser[i].Column, _ = cmd.Flags().GetString("column")
+			}
+			if err := p.Save(); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "update succeeded:", name)
+			return nil
+		}
+		return fmt.Errorf("user-to-user %q not found", name)
 	},
 }
 
@@ -279,11 +350,29 @@ var pipelineUserToUserDeleteCmd = &cobra.Command{
 	Short: "delete user-to-user recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := NewPipeline(newClient(cmd)).DeleteUserToUser(args[0]); err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "delete succeeded:", args[0])
-		return nil
+		for i, value := range p.UserToUser {
+			if value.Name != name {
+				continue
+			}
+			if err := checkPipelineReferences(p, "user-to-user", name); err != nil {
+				return err
+			}
+			p.UserToUser = slices.Delete(p.UserToUser, i, i+1)
+			if err := p.Save(); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "delete succeeded:", name)
+			return nil
+		}
+		return fmt.Errorf("user-to-user %q not found", name)
 	},
 }
 
@@ -299,11 +388,11 @@ var pipelineNonPersonalizedListCmd = &cobra.Command{
 	Short: "list non-personalized recommender configuration",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).ListNonPersonalized()
-		if err != nil {
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		return marshal(cmd, value)
+		return marshal(cmd, p.NonPersonalized)
 	},
 }
 
@@ -312,11 +401,20 @@ var pipelineNonPersonalizedGetCmd = &cobra.Command{
 	Short: "get non-personalized recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).GetNonPersonalized(args[0])
-		if err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		return marshal(cmd, value)
+		for _, value := range p.NonPersonalized {
+			if value.Name == name {
+				return marshal(cmd, value)
+			}
+		}
+		return fmt.Errorf("non-personalized %q not found", name)
 	},
 }
 
@@ -325,13 +423,26 @@ var pipelineNonPersonalizedAddCmd = &cobra.Command{
 	Short: "add non-personalized recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		score, _ := cmd.Flags().GetString("score")
-		filter, _ := cmd.Flags().GetString("filter")
-		value := NonPersonalizedConfig{Name: args[0], Score: score, Filter: filter}
-		if err := NewPipeline(newClient(cmd)).AddNonPersonalized(value); err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "add succeeded:", args[0])
+		for _, value := range p.NonPersonalized {
+			if value.Name == name {
+				return fmt.Errorf("non-personalized %q already exists", name)
+			}
+		}
+		score, _ := cmd.Flags().GetString("score")
+		filter, _ := cmd.Flags().GetString("filter")
+		p.NonPersonalized = append(p.NonPersonalized, NonPersonalizedConfig{Name: name, Score: score, Filter: filter})
+		if err := p.Save(); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "add succeeded:", name)
 		return nil
 	},
 }
@@ -344,11 +455,31 @@ var pipelineNonPersonalizedUpdateCmd = &cobra.Command{
 		if err := pipelineHasChanges(cmd, "score", "filter"); err != nil {
 			return err
 		}
-		if err := NewPipeline(newClient(cmd)).UpdateNonPersonalized(args[0], NonPersonalizedPatch{Score: pipelineStringPatch(cmd, "score"), Filter: pipelineStringPatch(cmd, "filter")}); err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "update succeeded:", args[0])
-		return nil
+		for i, value := range p.NonPersonalized {
+			if value.Name != name {
+				continue
+			}
+			if cmd.Flags().Changed("score") {
+				p.NonPersonalized[i].Score, _ = cmd.Flags().GetString("score")
+			}
+			if cmd.Flags().Changed("filter") {
+				p.NonPersonalized[i].Filter, _ = cmd.Flags().GetString("filter")
+			}
+			if err := p.Save(); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "update succeeded:", name)
+			return nil
+		}
+		return fmt.Errorf("non-personalized %q not found", name)
 	},
 }
 
@@ -357,11 +488,29 @@ var pipelineNonPersonalizedDeleteCmd = &cobra.Command{
 	Short: "delete non-personalized recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := NewPipeline(newClient(cmd)).DeleteNonPersonalized(args[0]); err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "delete succeeded:", args[0])
-		return nil
+		for i, value := range p.NonPersonalized {
+			if value.Name != name {
+				continue
+			}
+			if err := checkPipelineReferences(p, "non-personalized", name); err != nil {
+				return err
+			}
+			p.NonPersonalized = slices.Delete(p.NonPersonalized, i, i+1)
+			if err := p.Save(); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "delete succeeded:", name)
+			return nil
+		}
+		return fmt.Errorf("non-personalized %q not found", name)
 	},
 }
 
@@ -377,11 +526,11 @@ var pipelineExternalListCmd = &cobra.Command{
 	Short: "list external recommender configuration",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).ListExternal()
-		if err != nil {
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		return marshal(cmd, value)
+		return marshal(cmd, p.External)
 	},
 }
 
@@ -390,11 +539,20 @@ var pipelineExternalGetCmd = &cobra.Command{
 	Short: "get external recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).GetExternal(args[0])
-		if err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		return marshal(cmd, value)
+		for _, value := range p.External {
+			if value.Name == name {
+				return marshal(cmd, value)
+			}
+		}
+		return fmt.Errorf("external %q not found", name)
 	},
 }
 
@@ -403,18 +561,28 @@ var pipelineExternalAddCmd = &cobra.Command{
 	Short: "add external recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
 		script, err := pipelineScript(cmd)
 		if err != nil {
 			return err
 		}
-		value := ExternalConfig{Name: args[0]}
-		if script != nil {
-			value.Script = *script
-		}
-		if err := NewPipeline(newClient(cmd)).AddExternal(value); err != nil {
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "add succeeded:", args[0])
+		for _, value := range p.External {
+			if value.Name == name {
+				return fmt.Errorf("external %q already exists", name)
+			}
+		}
+		p.External = append(p.External, ExternalConfig{Name: name, Script: script})
+		if err := p.Save(); err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "add succeeded:", name)
 		return nil
 	},
 }
@@ -427,15 +595,30 @@ var pipelineExternalUpdateCmd = &cobra.Command{
 		if err := pipelineHasChanges(cmd, "script", "script-file"); err != nil {
 			return err
 		}
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
 		script, err := pipelineScript(cmd)
 		if err != nil {
 			return err
 		}
-		if err := NewPipeline(newClient(cmd)).UpdateExternal(args[0], ExternalPatch{Script: script}); err != nil {
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "update succeeded:", args[0])
-		return nil
+		for i, value := range p.External {
+			if value.Name != name {
+				continue
+			}
+			p.External[i].Script = script
+			if err := p.Save(); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "update succeeded:", name)
+			return nil
+		}
+		return fmt.Errorf("external %q not found", name)
 	},
 }
 
@@ -444,11 +627,29 @@ var pipelineExternalDeleteCmd = &cobra.Command{
 	Short: "delete external recommender configuration",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := NewPipeline(newClient(cmd)).DeleteExternal(args[0]); err != nil {
+		name := args[0]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("name must not be empty")
+		}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "delete succeeded:", args[0])
-		return nil
+		for i, value := range p.External {
+			if value.Name != name {
+				continue
+			}
+			if err := checkPipelineReferences(p, "external", name); err != nil {
+				return err
+			}
+			p.External = slices.Delete(p.External, i, i+1)
+			if err := p.Save(); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "delete succeeded:", name)
+			return nil
+		}
+		return fmt.Errorf("external %q not found", name)
 	},
 }
 
@@ -459,11 +660,11 @@ var pipelineCollaborativeCmd = &cobra.Command{
 var pipelineCollaborativeGetCmd = &cobra.Command{
 	Use: "get", Short: "Get collaborative filtering configuration", Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value, err := NewPipeline(newClient(cmd)).GetCollaborative()
-		if err != nil {
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
 			return err
 		}
-		return marshal(cmd, value)
+		return marshal(cmd, p.Collaborative)
 	},
 }
 
@@ -473,24 +674,26 @@ var pipelineCollaborativeUpdateCmd = &cobra.Command{
 		if err := pipelineHasChanges(cmd, "type", "fit-period", "fit-epoch", "optimize-period", "optimize-trials"); err != nil {
 			return err
 		}
-		patch := CollaborativePatch{Type: pipelineStringPatch(cmd, "type")}
+		p := NewPipeline(newClient(cmd))
+		if err := p.Load(); err != nil {
+			return err
+		}
+		if cmd.Flags().Changed("type") {
+			p.Collaborative.Type, _ = cmd.Flags().GetString("type")
+		}
 		if cmd.Flags().Changed("fit-period") {
-			value, _ := cmd.Flags().GetDuration("fit-period")
-			patch.FitPeriod = &value
+			p.Collaborative.FitPeriod, _ = cmd.Flags().GetDuration("fit-period")
 		}
 		if cmd.Flags().Changed("fit-epoch") {
-			value, _ := cmd.Flags().GetInt("fit-epoch")
-			patch.FitEpoch = &value
+			p.Collaborative.FitEpoch, _ = cmd.Flags().GetInt("fit-epoch")
 		}
 		if cmd.Flags().Changed("optimize-period") {
-			value, _ := cmd.Flags().GetDuration("optimize-period")
-			patch.OptimizePeriod = &value
+			p.Collaborative.OptimizePeriod, _ = cmd.Flags().GetDuration("optimize-period")
 		}
 		if cmd.Flags().Changed("optimize-trials") {
-			value, _ := cmd.Flags().GetInt("optimize-trials")
-			patch.OptimizeTrials = &value
+			p.Collaborative.OptimizeTrials, _ = cmd.Flags().GetInt("optimize-trials")
 		}
-		if err := NewPipeline(newClient(cmd)).UpdateCollaborative(patch); err != nil {
+		if err := p.Save(); err != nil {
 			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Updated collaborative")
@@ -503,13 +706,10 @@ var pipelineCollaborativeUpdateCmd = &cobra.Command{
 type PipelineTransport interface {
 	GetConfigMap() (map[string]any, error)
 	UpdateConfig(map[string]any) (map[string]any, error)
-	GetConfigSchema() (map[string]any, error)
-	ResetConfig() (map[string]any, error)
 }
 
 // Pipeline manages recommendation configuration. Writes are read-modify-write:
 // the server has no compare-and-swap API; concurrent edits can overwrite changes.
-// Raw maps are retained internally so unrecognized fields survive updates.
 // The Master validates the submitted configuration using its actual rules.
 // Configuration fields and supporting types are copied from
 // gorse/config/config.go at d3186be36756. Keep fields and tags aligned when
@@ -662,96 +862,58 @@ func (c *CollaborativeConfig) FullName() string {
 
 func NewPipeline(client PipelineTransport) *Pipeline { return &Pipeline{client: client} }
 
-func (p *Pipeline) read() (map[string]any, string, map[string]any, error) {
+func (p *Pipeline) read() (map[string]any, error) {
 	root, err := p.client.GetConfigMap()
 	if err != nil {
-		return nil, "", nil, err
+		return nil, err
 	}
-	key, value, ok := getConfigValue(root, "recommend", "Recommend")
+	_, value, ok := getConfigValue(root, "recommend", "Recommend")
 	if !ok {
-		return nil, "", nil, fmt.Errorf("recommend config not found")
+		return nil, fmt.Errorf("recommend config not found")
 	}
-	rec, ok := value.(map[string]any)
+	recommend, ok := value.(map[string]any)
 	if !ok {
-		return nil, "", nil, fmt.Errorf("recommend config must be an object")
-	}
-	return root, key, rec, nil
-}
-func (p *Pipeline) Get() (map[string]any, error)    { _, _, rec, err := p.read(); return rec, err }
-func (p *Pipeline) Schema() (map[string]any, error) { return p.client.GetConfigSchema() }
-func (p *Pipeline) Reset() (map[string]any, error)  { return p.client.ResetConfig() }
-func (p *Pipeline) Patch(document []byte) (map[string]any, error) {
-	root, key, rec, err := p.read()
-	if err != nil {
-		return nil, err
-	}
-	data, err := json.Marshal(rec)
-	if err != nil {
-		return nil, err
-	}
-	patch, err := jsonpatch.DecodePatch(document)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON patch %w", err)
-	}
-	data, err = patch.Apply(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply JSON patch %w", err)
-	}
-	var updated map[string]any
-	if err = json.Unmarshal(data, &updated); err != nil {
-		return nil, err
-	}
-	if updated == nil {
 		return nil, fmt.Errorf("recommend config must be an object")
 	}
-	root[key] = updated
-	return p.client.UpdateConfig(root)
+	return recommend, nil
 }
 
-// pipelineState keeps the API representation at the transport boundary while
-// recommendation operations use the local configuration types.
-type pipelineState struct {
-	Pipeline
-	root     map[string]any
-	raw      map[string]any
-	original map[string]any
-}
-
-func (p *Pipeline) readPipeline() (*pipelineState, error) {
-	root, _, raw, err := p.read()
+// Load replaces the local fields with the current recommendation configuration.
+func (p *Pipeline) Load() error {
+	raw, err := p.read()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	state := &pipelineState{root: root, raw: raw}
+	if _, ok := raw["collaborative"]; !ok {
+		return fmt.Errorf("collaborative config not found")
+	}
+	value := Pipeline{client: p.client}
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:     &state.Pipeline,
+		Result:     &value,
 		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := decoder.Decode(raw); err != nil {
-		return nil, err
+		return err
 	}
 	seen := make(map[string]bool)
-	for _, fullName := range state.ListRecommenders() {
+	for _, fullName := range value.ListRecommenders() {
 		kind, name, named := strings.Cut(fullName, "/")
 		if !named {
 			continue
 		}
 		if strings.TrimSpace(name) == "" {
-			return nil, fmt.Errorf("recommend.%s: name must not be empty", kind)
+			return fmt.Errorf("recommend.%s: name must not be empty", kind)
 		}
 		if seen[fullName] {
-			return nil, fmt.Errorf("duplicate %s name %q", kind, name)
+			return fmt.Errorf("duplicate %s name %q", kind, name)
 		}
 		seen[fullName] = true
 	}
-	state.original, err = encodePipeline(state.Pipeline)
-	if err != nil {
-		return nil, err
-	}
-	return state, nil
+	*p = value
+	return nil
 }
 
 // encodePipeline applies the upstream mapstructure tags and converts durations
@@ -775,54 +937,14 @@ func encodePipeline(value Pipeline) (map[string]any, error) {
 	return fields, nil
 }
 
-func (p *Pipeline) writePipeline(state *pipelineState) error {
-	updated, err := encodePipeline(state.Pipeline)
+// Save submits the local recommendation configuration for server validation.
+func (p *Pipeline) Save() error {
+	value, err := encodePipeline(*p)
 	if err != nil {
 		return err
 	}
-	for field, value := range updated {
-		if !reflect.DeepEqual(state.original[field], value) {
-			state.raw[field] = mergePipelineValue(state.raw[field], value)
-		}
-	}
-	_, err = p.client.UpdateConfig(state.root)
+	_, err = p.client.UpdateConfig(map[string]any{"recommend": value})
 	return err
-}
-
-// Preserve unknown API fields, matching recommender entries by name when a
-// typed operation adds, updates, or removes an entry.
-func mergePipelineValue(original, updated any) any {
-	switch value := updated.(type) {
-	case map[string]any:
-		previous, ok := original.(map[string]any)
-		if !ok || previous == nil {
-			return value
-		}
-		for key, field := range value {
-			previous[key] = mergePipelineValue(previous[key], field)
-		}
-		return previous
-	case []any:
-		previous, _ := original.([]any)
-		byName := make(map[string]map[string]any, len(previous))
-		for _, entry := range previous {
-			if fields, ok := entry.(map[string]any); ok {
-				if name, ok := fields["name"].(string); ok {
-					byName[name] = fields
-				}
-			}
-		}
-		for i, entry := range value {
-			if fields, ok := entry.(map[string]any); ok {
-				if name, ok := fields["name"].(string); ok {
-					value[i] = mergePipelineValue(byName[name], fields)
-				}
-			}
-		}
-		return value
-	default:
-		return value
-	}
 }
 
 func checkPipelineReferences(recommend *Pipeline, kind, name string) error {
@@ -840,456 +962,48 @@ func checkPipelineReferences(recommend *Pipeline, kind, name string) error {
 	return nil
 }
 
-// ItemToItemPatch distinguishes omitted fields from explicit zero values.
-type ItemToItemPatch struct {
-	Type   *string `json:"type,omitempty"`
-	Column *string `json:"column,omitempty"`
-}
-
-func (p *Pipeline) ListItemToItem() ([]ItemToItemConfig, error) {
-	state, err := p.readPipeline()
-	if err != nil {
-		return nil, err
-	}
-	return append([]ItemToItemConfig{}, state.ItemToItem...), nil
-}
-
-func (p *Pipeline) GetItemToItem(name string) (ItemToItemConfig, error) {
-	if strings.TrimSpace(name) == "" {
-		return ItemToItemConfig{}, fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return ItemToItemConfig{}, err
-	}
-	for _, value := range state.ItemToItem {
-		if value.Name == name {
-			return value, nil
-		}
-	}
-	return ItemToItemConfig{}, fmt.Errorf("item-to-item %q not found", name)
-}
-
-func (p *Pipeline) AddItemToItem(value ItemToItemConfig) error {
-	if strings.TrimSpace(value.Name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for _, current := range state.ItemToItem {
-		if current.Name == value.Name {
-			return fmt.Errorf("item-to-item %q already exists", value.Name)
-		}
-	}
-	state.ItemToItem = append(state.ItemToItem, value)
-	return p.writePipeline(state)
-}
-func (p *Pipeline) UpdateItemToItem(name string, patch ItemToItemPatch) error {
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	if patch.Type == nil && patch.Column == nil {
-		return fmt.Errorf("no changes supplied")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for i := range state.ItemToItem {
-		if state.ItemToItem[i].Name == name {
-			if patch.Type != nil {
-				state.ItemToItem[i].Type = *patch.Type
-			}
-			if patch.Column != nil {
-				state.ItemToItem[i].Column = *patch.Column
-			}
-			return p.writePipeline(state)
-		}
-	}
-	return fmt.Errorf("item-to-item %q not found", name)
-}
-
-func (p *Pipeline) DeleteItemToItem(name string) error {
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for i, value := range state.ItemToItem {
-		if value.Name == name {
-			if err := checkPipelineReferences(&state.Pipeline, "item-to-item", name); err != nil {
-				return err
-			}
-			state.ItemToItem = slices.Delete(state.ItemToItem, i, i+1)
-			return p.writePipeline(state)
-		}
-	}
-	return fmt.Errorf("item-to-item %q not found", name)
-}
-
-// UserToUserPatch distinguishes omitted fields from explicit zero values.
-type UserToUserPatch struct {
-	Type   *string `json:"type,omitempty"`
-	Column *string `json:"column,omitempty"`
-}
-
-func (p *Pipeline) ListUserToUser() ([]UserToUserConfig, error) {
-	state, err := p.readPipeline()
-	if err != nil {
-		return nil, err
-	}
-	return append([]UserToUserConfig{}, state.UserToUser...), nil
-}
-
-func (p *Pipeline) GetUserToUser(name string) (UserToUserConfig, error) {
-	if strings.TrimSpace(name) == "" {
-		return UserToUserConfig{}, fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return UserToUserConfig{}, err
-	}
-	for _, value := range state.UserToUser {
-		if value.Name == name {
-			return value, nil
-		}
-	}
-	return UserToUserConfig{}, fmt.Errorf("user-to-user %q not found", name)
-}
-
-func (p *Pipeline) AddUserToUser(value UserToUserConfig) error {
-	if strings.TrimSpace(value.Name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for _, current := range state.UserToUser {
-		if current.Name == value.Name {
-			return fmt.Errorf("user-to-user %q already exists", value.Name)
-		}
-	}
-	state.UserToUser = append(state.UserToUser, value)
-	return p.writePipeline(state)
-}
-func (p *Pipeline) UpdateUserToUser(name string, patch UserToUserPatch) error {
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	if patch.Type == nil && patch.Column == nil {
-		return fmt.Errorf("no changes supplied")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for i := range state.UserToUser {
-		if state.UserToUser[i].Name == name {
-			if patch.Type != nil {
-				state.UserToUser[i].Type = *patch.Type
-			}
-			if patch.Column != nil {
-				state.UserToUser[i].Column = *patch.Column
-			}
-			return p.writePipeline(state)
-		}
-	}
-	return fmt.Errorf("user-to-user %q not found", name)
-}
-
-func (p *Pipeline) DeleteUserToUser(name string) error {
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for i, value := range state.UserToUser {
-		if value.Name == name {
-			if err := checkPipelineReferences(&state.Pipeline, "user-to-user", name); err != nil {
-				return err
-			}
-			state.UserToUser = slices.Delete(state.UserToUser, i, i+1)
-			return p.writePipeline(state)
-		}
-	}
-	return fmt.Errorf("user-to-user %q not found", name)
-}
-
-// NonPersonalizedPatch distinguishes omitted fields from explicit zero values.
-type NonPersonalizedPatch struct {
-	Score  *string `json:"score,omitempty"`
-	Filter *string `json:"filter,omitempty"`
-}
-
-func (p *Pipeline) ListNonPersonalized() ([]NonPersonalizedConfig, error) {
-	state, err := p.readPipeline()
-	if err != nil {
-		return nil, err
-	}
-	return append([]NonPersonalizedConfig{}, state.NonPersonalized...), nil
-}
-
-func (p *Pipeline) GetNonPersonalized(name string) (NonPersonalizedConfig, error) {
-	if strings.TrimSpace(name) == "" {
-		return NonPersonalizedConfig{}, fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return NonPersonalizedConfig{}, err
-	}
-	for _, value := range state.NonPersonalized {
-		if value.Name == name {
-			return value, nil
-		}
-	}
-	return NonPersonalizedConfig{}, fmt.Errorf("non-personalized %q not found", name)
-}
-
-func (p *Pipeline) AddNonPersonalized(value NonPersonalizedConfig) error {
-	if strings.TrimSpace(value.Name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for _, current := range state.NonPersonalized {
-		if current.Name == value.Name {
-			return fmt.Errorf("non-personalized %q already exists", value.Name)
-		}
-	}
-	state.NonPersonalized = append(state.NonPersonalized, value)
-	return p.writePipeline(state)
-}
-func (p *Pipeline) UpdateNonPersonalized(name string, patch NonPersonalizedPatch) error {
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	if patch.Score == nil && patch.Filter == nil {
-		return fmt.Errorf("no changes supplied")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for i := range state.NonPersonalized {
-		if state.NonPersonalized[i].Name == name {
-			if patch.Score != nil {
-				state.NonPersonalized[i].Score = *patch.Score
-			}
-			if patch.Filter != nil {
-				state.NonPersonalized[i].Filter = *patch.Filter
-			}
-			return p.writePipeline(state)
-		}
-	}
-	return fmt.Errorf("non-personalized %q not found", name)
-}
-
-func (p *Pipeline) DeleteNonPersonalized(name string) error {
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for i, value := range state.NonPersonalized {
-		if value.Name == name {
-			if err := checkPipelineReferences(&state.Pipeline, "non-personalized", name); err != nil {
-				return err
-			}
-			state.NonPersonalized = slices.Delete(state.NonPersonalized, i, i+1)
-			return p.writePipeline(state)
-		}
-	}
-	return fmt.Errorf("non-personalized %q not found", name)
-}
-
-// ExternalPatch distinguishes omitted fields from explicit zero values.
-type ExternalPatch struct {
-	Script *string `json:"script,omitempty"`
-}
-
-func (p *Pipeline) ListExternal() ([]ExternalConfig, error) {
-	state, err := p.readPipeline()
-	if err != nil {
-		return nil, err
-	}
-	return append([]ExternalConfig{}, state.External...), nil
-}
-
-func (p *Pipeline) GetExternal(name string) (ExternalConfig, error) {
-	if strings.TrimSpace(name) == "" {
-		return ExternalConfig{}, fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return ExternalConfig{}, err
-	}
-	for _, value := range state.External {
-		if value.Name == name {
-			return value, nil
-		}
-	}
-	return ExternalConfig{}, fmt.Errorf("external %q not found", name)
-}
-
-func (p *Pipeline) AddExternal(value ExternalConfig) error {
-	if strings.TrimSpace(value.Name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for _, current := range state.External {
-		if current.Name == value.Name {
-			return fmt.Errorf("external %q already exists", value.Name)
-		}
-	}
-	state.External = append(state.External, value)
-	return p.writePipeline(state)
-}
-func (p *Pipeline) UpdateExternal(name string, patch ExternalPatch) error {
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	if patch.Script == nil {
-		return fmt.Errorf("no changes supplied")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for i := range state.External {
-		if state.External[i].Name == name {
-			if patch.Script != nil {
-				state.External[i].Script = *patch.Script
-			}
-			return p.writePipeline(state)
-		}
-	}
-	return fmt.Errorf("external %q not found", name)
-}
-
-func (p *Pipeline) DeleteExternal(name string) error {
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("name must not be empty")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	for i, value := range state.External {
-		if value.Name == name {
-			if err := checkPipelineReferences(&state.Pipeline, "external", name); err != nil {
-				return err
-			}
-			state.External = slices.Delete(state.External, i, i+1)
-			return p.writePipeline(state)
-		}
-	}
-	return fmt.Errorf("external %q not found", name)
-}
-
-// CollaborativePatch updates the singleton collaborative configuration.
-type CollaborativePatch struct {
-	Type           *string        `json:"type,omitempty"`
-	FitPeriod      *time.Duration `json:"fit_period,omitempty"`
-	FitEpoch       *int           `json:"fit_epoch,omitempty"`
-	OptimizePeriod *time.Duration `json:"optimize_period,omitempty"`
-	OptimizeTrials *int           `json:"optimize_trials,omitempty"`
-}
-
-func (p *Pipeline) GetCollaborative() (CollaborativeConfig, error) {
-	state, err := p.readPipeline()
-	if err != nil {
-		return CollaborativeConfig{}, err
-	}
-	if _, ok := state.raw["collaborative"]; !ok {
-		return CollaborativeConfig{}, fmt.Errorf("collaborative config not found")
-	}
-	return state.Collaborative, nil
-}
-
-func (p *Pipeline) UpdateCollaborative(patch CollaborativePatch) error {
-	if patch.Type == nil && patch.FitPeriod == nil && patch.FitEpoch == nil && patch.OptimizePeriod == nil && patch.OptimizeTrials == nil {
-		return fmt.Errorf("no changes supplied")
-	}
-	state, err := p.readPipeline()
-	if err != nil {
-		return err
-	}
-	if _, ok := state.raw["collaborative"]; !ok {
-		return fmt.Errorf("collaborative config not found")
-	}
-	if patch.Type != nil {
-		state.Collaborative.Type = *patch.Type
-	}
-	if patch.FitPeriod != nil {
-		state.Collaborative.FitPeriod = *patch.FitPeriod
-	}
-	if patch.FitEpoch != nil {
-		state.Collaborative.FitEpoch = *patch.FitEpoch
-	}
-	if patch.OptimizePeriod != nil {
-		state.Collaborative.OptimizePeriod = *patch.OptimizePeriod
-	}
-	if patch.OptimizeTrials != nil {
-		state.Collaborative.OptimizeTrials = *patch.OptimizeTrials
-	}
-	return p.writePipeline(state)
-}
-
 func init() {
-	PipelineCmd.AddCommand(pipelineGetCmd, pipelineSchemaCmd, pipelinePatchCmd, pipelineResetCmd)
-	PipelineCmd.AddCommand(pipelineItemToItemCmd, pipelineUserToUserCmd, pipelineNonPersonalizedCmd, pipelineExternalCmd, pipelineCollaborativeCmd)
-	pipelineItemToItemCmd.AddCommand(pipelineItemToItemListCmd, pipelineItemToItemGetCmd, pipelineItemToItemAddCmd, pipelineItemToItemUpdateCmd, pipelineItemToItemDeleteCmd)
-	pipelineUserToUserCmd.AddCommand(pipelineUserToUserListCmd, pipelineUserToUserGetCmd, pipelineUserToUserAddCmd, pipelineUserToUserUpdateCmd, pipelineUserToUserDeleteCmd)
-	pipelineNonPersonalizedCmd.AddCommand(pipelineNonPersonalizedListCmd, pipelineNonPersonalizedGetCmd, pipelineNonPersonalizedAddCmd, pipelineNonPersonalizedUpdateCmd, pipelineNonPersonalizedDeleteCmd)
-	pipelineExternalCmd.AddCommand(pipelineExternalListCmd, pipelineExternalGetCmd, pipelineExternalAddCmd, pipelineExternalUpdateCmd, pipelineExternalDeleteCmd)
-	pipelineCollaborativeCmd.AddCommand(pipelineCollaborativeGetCmd, pipelineCollaborativeUpdateCmd)
-
-	for _, cmd := range []*cobra.Command{
+	PipelineCmd.AddCommand(
 		pipelineGetCmd,
-		pipelineSchemaCmd,
-		pipelinePatchCmd,
 		pipelineResetCmd,
+		pipelineItemToItemCmd,
+		pipelineUserToUserCmd,
+		pipelineNonPersonalizedCmd,
+		pipelineExternalCmd,
+		pipelineCollaborativeCmd,
+	)
+	pipelineItemToItemCmd.AddCommand(
 		pipelineItemToItemListCmd,
 		pipelineItemToItemGetCmd,
 		pipelineItemToItemAddCmd,
 		pipelineItemToItemUpdateCmd,
 		pipelineItemToItemDeleteCmd,
+	)
+	pipelineUserToUserCmd.AddCommand(
 		pipelineUserToUserListCmd,
 		pipelineUserToUserGetCmd,
 		pipelineUserToUserAddCmd,
 		pipelineUserToUserUpdateCmd,
 		pipelineUserToUserDeleteCmd,
+	)
+	pipelineNonPersonalizedCmd.AddCommand(
 		pipelineNonPersonalizedListCmd,
 		pipelineNonPersonalizedGetCmd,
 		pipelineNonPersonalizedAddCmd,
 		pipelineNonPersonalizedUpdateCmd,
 		pipelineNonPersonalizedDeleteCmd,
+	)
+	pipelineExternalCmd.AddCommand(
 		pipelineExternalListCmd,
 		pipelineExternalGetCmd,
 		pipelineExternalAddCmd,
 		pipelineExternalUpdateCmd,
 		pipelineExternalDeleteCmd,
+	)
+	pipelineCollaborativeCmd.AddCommand(
 		pipelineCollaborativeGetCmd,
 		pipelineCollaborativeUpdateCmd,
-	} {
-		cmd.Flags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
-		cmd.Flags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
-		cmd.Flags().String("application", "", "Gorse CLI application name")
-	}
+	)
 
 	pipelineItemToItemAddCmd.Flags().String("type", "", "Recommender type")
 	pipelineItemToItemAddCmd.Flags().String("column", "", "Recommender column")

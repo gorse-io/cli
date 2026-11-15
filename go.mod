@@ -3,7 +3,6 @@ module github.com/gorse-io/cli
 go 1.27.0
 
 require (
-	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gorse-io/gorse v0.5.10-0.20261018142309-d3186be36756
 	github.com/gorse-io/gorse-go v0.5.0-alpha.3.0.20260613082921-062d740c10a2

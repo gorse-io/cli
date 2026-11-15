@@ -14,6 +14,9 @@ func TestApplications(t *testing.T) {
 	t.Setenv("GORSE_ADMIN_ENDPOINT", "")
 	t.Setenv("GORSE_ADMIN_API_KEY", "")
 	root := &cobra.Command{Use: "gorse-cli"}
+	root.PersistentFlags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
+	root.PersistentFlags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
+	root.PersistentFlags().String("application", "", "Gorse CLI application name")
 	root.AddCommand(ApplicationCmd)
 	t.Cleanup(func() { root.RemoveCommand(ApplicationCmd) })
 
