@@ -22,7 +22,6 @@ import (
 	"os"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -34,9 +33,9 @@ import (
 
 // Keep keyring identifiers stable so saved applications remain available after the rename.
 const (
-	keyringService               = "gorse-cli"
-	keyringCurrentApplicationKey = "current-context"
-	keyringApplicationsKey       = "contexts"
+	keyringService         = "gorse-cli"
+	keyringCurrentKey      = "current"
+	keyringApplicationsKey = "applications"
 )
 
 var (
@@ -44,7 +43,7 @@ var (
 	applications           = NewApplications(keyringService)
 )
 
-type cliApplication struct {
+type Application struct {
 	Name     string
 	Endpoint string
 	APIKey   string
@@ -66,7 +65,7 @@ func (c Applications) applicationAPIKeyKey(name string) string {
 	return "context:" + name + ":admin-api-key"
 }
 
-func (c Applications) Names() ([]string, error) {
+func (c Applications) List() ([]string, error) {
 	raw, err := keyring.Get(c.keyringService, keyringApplicationsKey)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil, nil
@@ -94,7 +93,7 @@ func (c Applications) saveNames(names []string) error {
 }
 
 func (c Applications) addName(name string) error {
-	names, err := c.Names()
+	names, err := c.List()
 	if err != nil {
 		return err
 	}
@@ -105,7 +104,7 @@ func (c Applications) addName(name string) error {
 }
 
 func (c Applications) removeName(name string) ([]string, error) {
-	names, err := c.Names()
+	names, err := c.List()
 	if err != nil {
 		return nil, err
 	}
@@ -118,44 +117,44 @@ func (c Applications) removeName(name string) ([]string, error) {
 	return names, nil
 }
 
-func (c Applications) CurrentName() (string, error) {
-	name, err := keyring.Get(c.keyringService, keyringCurrentApplicationKey)
+func (c Applications) Current() (string, error) {
+	name, err := keyring.Get(c.keyringService, keyringCurrentKey)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", nil
 	}
 	return name, err
 }
 
-func (c Applications) SetCurrentName(name string) error {
-	return keyring.Set(c.keyringService, keyringCurrentApplicationKey, name)
+func (c Applications) SetCurrent(name string) error {
+	return keyring.Set(c.keyringService, keyringCurrentKey, name)
 }
 
-func (c Applications) ClearCurrentName() error {
-	if err := keyring.Delete(c.keyringService, keyringCurrentApplicationKey); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+func (c Applications) ClearCurrent() error {
+	if err := keyring.Delete(c.keyringService, keyringCurrentKey); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		return err
 	}
 	return nil
 }
 
-func (c Applications) Load(name string) (cliApplication, error) {
+func (c Applications) Get(name string) (Application, error) {
 	if !applicationNamePattern.MatchString(name) {
-		return cliApplication{}, fmt.Errorf("application name %q must match %q", name, applicationNamePattern.String())
+		return Application{}, fmt.Errorf("application name %q must match %q", name, applicationNamePattern.String())
 	}
 	endpoint, endpointErr := keyring.Get(c.keyringService, c.applicationEndpointKey(name))
 	apiKey, apiKeyErr := keyring.Get(c.keyringService, c.applicationAPIKeyKey(name))
 	if errors.Is(endpointErr, keyring.ErrNotFound) || errors.Is(apiKeyErr, keyring.ErrNotFound) {
-		return cliApplication{}, fmt.Errorf("application %q not found", name)
+		return Application{}, fmt.Errorf("application %q not found", name)
 	}
 	if endpointErr != nil {
-		return cliApplication{}, endpointErr
+		return Application{}, endpointErr
 	}
 	if apiKeyErr != nil {
-		return cliApplication{}, apiKeyErr
+		return Application{}, apiKeyErr
 	}
-	return cliApplication{Name: name, Endpoint: endpoint, APIKey: apiKey}, nil
+	return Application{Name: name, Endpoint: endpoint, APIKey: apiKey}, nil
 }
 
-func (c Applications) Save(name, endpoint, apiKey string) error {
+func (c Applications) Upsert(name, endpoint, apiKey string) error {
 	if !applicationNamePattern.MatchString(name) {
 		return fmt.Errorf("application name %q must match %q", name, applicationNamePattern.String())
 	}
@@ -174,11 +173,11 @@ func (c Applications) Save(name, endpoint, apiKey string) error {
 	if err := c.addName(name); err != nil {
 		return err
 	}
-	return c.SetCurrentName(name)
+	return c.SetCurrent(name)
 }
 
 func (c Applications) Delete(name string) error {
-	if _, err := c.Load(name); err != nil {
+	if _, err := c.Get(name); err != nil {
 		return err
 	}
 	if err := keyring.Delete(c.keyringService, c.applicationEndpointKey(name)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
@@ -191,7 +190,7 @@ func (c Applications) Delete(name string) error {
 	if err != nil {
 		return err
 	}
-	current, err := c.CurrentName()
+	current, err := c.Current()
 	if err != nil {
 		return err
 	}
@@ -199,9 +198,9 @@ func (c Applications) Delete(name string) error {
 		return nil
 	}
 	if len(names) == 0 {
-		return c.ClearCurrentName()
+		return c.ClearCurrent()
 	}
-	return c.SetCurrentName(names[0])
+	return c.SetCurrent(names[0])
 }
 
 // getEndpointAndKey returns the base URL and API key from flags, application, or environment variables.
@@ -212,15 +211,16 @@ func getEndpointAndKey(cmd *cobra.Command) (endpoint, apiKey string) {
 	if endpoint == "" || apiKey == "" {
 		applicationName := lo.Must(cmd.Flags().GetString("application"))
 		if applicationName != "" {
-			app, err := applications.Load(applicationName)
+			app, err := applications.Get(applicationName)
 			if err != nil {
-				fatal(cmd,
-					fmt.Sprintf("application %q was not found.", applicationName),
-					"List available applications:",
-					"  gorse-cli application list",
-					"Create it:",
-					"  gorse-cli application add "+applicationName+" --endpoint http://localhost:8088",
-				)
+				output := cmd.ErrOrStderr()
+				fmt.Fprintf(output, "Error: application %q was not found.\n", applicationName)
+				fmt.Fprintln(output)
+				fmt.Fprintln(output, "List available applications:")
+				fmt.Fprintln(output, "  gorse-cli application list")
+				fmt.Fprintln(output, "Create it:")
+				fmt.Fprintln(output, "  gorse-cli application add "+applicationName+" --endpoint http://localhost:8088")
+				os.Exit(1)
 			}
 			if endpoint == "" {
 				endpoint = app.Endpoint
@@ -232,20 +232,22 @@ func getEndpointAndKey(cmd *cobra.Command) (endpoint, apiKey string) {
 	}
 
 	if endpoint == "" || apiKey == "" {
-		applicationName, err := applications.CurrentName()
+		applicationName, err := applications.Current()
 		if err != nil {
-			fatal(cmd, "failed to read the current application from the system keyring: "+err.Error())
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to read the current application from the system keyring: %v\n", err)
+			os.Exit(1)
 		}
 		if applicationName != "" {
-			app, err := applications.Load(applicationName)
+			app, err := applications.Get(applicationName)
 			if err != nil {
-				fatal(cmd,
-					fmt.Sprintf("current application %q is invalid or incomplete.", applicationName),
-					"Choose another application:",
-					"  gorse-cli application use <name>",
-					"Or recreate it:",
-					"  gorse-cli application add "+applicationName+" --endpoint http://localhost:8088",
-				)
+				output := cmd.ErrOrStderr()
+				fmt.Fprintf(output, "Error: current application %q is invalid or incomplete.\n", applicationName)
+				fmt.Fprintln(output)
+				fmt.Fprintln(output, "Choose another application:")
+				fmt.Fprintln(output, "  gorse-cli application use <name>")
+				fmt.Fprintln(output, "Or recreate it:")
+				fmt.Fprintln(output, "  gorse-cli application add "+applicationName+" --endpoint http://localhost:8088")
+				os.Exit(1)
 			}
 			if endpoint == "" {
 				endpoint = app.Endpoint
@@ -278,33 +280,14 @@ func readSecret(prompt string) (string, error) {
 	return strings.TrimSpace(secret), err
 }
 
-func fatal(cmd *cobra.Command, message string, suggestions ...string) {
-	output := cmd.ErrOrStderr()
-	fmt.Fprintf(output, "Error: %s\n", message)
-	if len(suggestions) > 0 {
-		fmt.Fprintln(output)
-		for _, suggestion := range suggestions {
-			fmt.Fprintln(output, suggestion)
-		}
-	}
-	os.Exit(1)
-}
-
-func fatalErr(cmd *cobra.Command, message string, err error) {
-	if err != nil {
-		message += ": " + err.Error()
-	}
-	fatal(cmd, message)
-}
-
-var applicationCmd = &cobra.Command{
+var ApplicationCmd = &cobra.Command{
 	Use:   "application",
-	Short: "Manage Gorse CLI applications",
+	Short: "Manage applications",
 }
 
 var applicationAddCmd = &cobra.Command{
 	Use:   "add <name>",
-	Short: "Add or update a Gorse CLI application",
+	Short: "Add or update a application",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
@@ -315,15 +298,17 @@ var applicationAddCmd = &cobra.Command{
 			var err error
 			apiKey, err = readSecret("Gorse admin API key: ")
 			if err != nil {
-				fatal(cmd, "failed to read API key: "+err.Error())
+				fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to read API key: %v\n", err)
+				os.Exit(1)
 			}
 		}
-		if err := applications.Save(name, endpoint, apiKey); err != nil {
-			fatal(cmd,
-				"failed to save application "+strconv.Quote(name)+": "+err.Error(),
-				"Example:",
-				"  gorse-cli application add "+name+" --endpoint http://localhost:8088",
-			)
+		if err := applications.Upsert(name, endpoint, apiKey); err != nil {
+			output := cmd.ErrOrStderr()
+			fmt.Fprintf(output, "Error: failed to save application %q: %v\n", name, err)
+			fmt.Fprintln(output)
+			fmt.Fprintln(output, "Example:")
+			fmt.Fprintln(output, "  gorse-cli application add "+name+" --endpoint http://localhost:8088")
+			os.Exit(1)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Application %q saved and selected.\n", name)
 	},
@@ -331,25 +316,28 @@ var applicationAddCmd = &cobra.Command{
 
 var applicationListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List Gorse CLI applications",
+	Short: "List applications",
 	Run: func(cmd *cobra.Command, args []string) {
-		names, err := applications.Names()
+		names, err := applications.List()
 		if err != nil {
-			fatal(cmd, "failed to read applications from the system keyring: "+err.Error())
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to read applications from the system keyring: %v\n", err)
+			os.Exit(1)
 		}
 		if len(names) == 0 {
 			fmt.Fprintln(cmd.OutOrStdout(), "No applications configured.")
 			return
 		}
-		current, err := applications.CurrentName()
+		current, err := applications.Current()
 		if err != nil {
-			fatal(cmd, "failed to read the current application from the system keyring: "+err.Error())
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to read the current application from the system keyring: %v\n", err)
+			os.Exit(1)
 		}
 		rows := make([][]string, 0, len(names))
 		for _, name := range names {
-			app, err := applications.Load(name)
+			app, err := applications.Get(name)
 			if err != nil {
-				fatal(cmd, "application "+strconv.Quote(name)+" is invalid or incomplete: "+err.Error())
+				fmt.Fprintf(cmd.ErrOrStderr(), "Error: application %q is invalid or incomplete: %v\n", name, err)
+				os.Exit(1)
 			}
 			currentMarker := ""
 			if name == current {
@@ -363,19 +351,21 @@ var applicationListCmd = &cobra.Command{
 
 var applicationUseCmd = &cobra.Command{
 	Use:   "use <name>",
-	Short: "Switch the current Gorse CLI application",
+	Short: "Switch the current application",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
-		if _, err := applications.Load(name); err != nil {
-			fatal(cmd,
-				"application "+strconv.Quote(name)+" was not found.",
-				"List available applications:",
-				"  gorse-cli application list",
-			)
+		if _, err := applications.Get(name); err != nil {
+			output := cmd.ErrOrStderr()
+			fmt.Fprintf(output, "Error: application %q was not found.\n", name)
+			fmt.Fprintln(output)
+			fmt.Fprintln(output, "List available applications:")
+			fmt.Fprintln(output, "  gorse-cli application list")
+			os.Exit(1)
 		}
-		if err := applications.SetCurrentName(name); err != nil {
-			fatal(cmd, "failed to save the current application in the system keyring: "+err.Error())
+		if err := applications.SetCurrent(name); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to save the current application in the system keyring: %v\n", err)
+			os.Exit(1)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Switched to application %q.\n", name)
 	},
@@ -383,16 +373,17 @@ var applicationUseCmd = &cobra.Command{
 
 var applicationDeleteCmd = &cobra.Command{
 	Use:   "delete <name>",
-	Short: "Delete a Gorse CLI application",
+	Short: "Delete a application",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
 		if err := applications.Delete(name); err != nil {
-			fatal(cmd,
-				"application "+strconv.Quote(name)+" was not found.",
-				"List available applications:",
-				"  gorse-cli application list",
-			)
+			output := cmd.ErrOrStderr()
+			fmt.Fprintf(output, "Error: application %q was not found.\n", name)
+			fmt.Fprintln(output)
+			fmt.Fprintln(output, "List available applications:")
+			fmt.Fprintln(output, "  gorse-cli application list")
+			os.Exit(1)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Application %q deleted.\n", name)
 	},
@@ -400,25 +391,27 @@ var applicationDeleteCmd = &cobra.Command{
 
 var applicationCurrentCmd = &cobra.Command{
 	Use:   "current",
-	Short: "Show the current Gorse CLI application",
+	Short: "Show the current application",
 	Run: func(cmd *cobra.Command, args []string) {
-		name, err := applications.CurrentName()
+		name, err := applications.Current()
 		if err != nil {
-			fatal(cmd, "failed to read the current application from the system keyring: "+err.Error())
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to read the current application from the system keyring: %v\n", err)
+			os.Exit(1)
 		}
 		if name == "" {
 			fmt.Fprintln(cmd.OutOrStdout(), "No current application.")
 			return
 		}
-		app, err := applications.Load(name)
+		app, err := applications.Get(name)
 		if err != nil {
-			fatal(cmd,
-				"current application "+strconv.Quote(name)+" is invalid or incomplete.",
-				"Choose another application:",
-				"  gorse-cli application use <name>",
-				"Or recreate it:",
-				"  gorse-cli application add "+name+" --endpoint http://localhost:8088",
-			)
+			output := cmd.ErrOrStderr()
+			fmt.Fprintf(output, "Error: current application %q is invalid or incomplete.\n", name)
+			fmt.Fprintln(output)
+			fmt.Fprintln(output, "Choose another application:")
+			fmt.Fprintln(output, "  gorse-cli application use <name>")
+			fmt.Fprintln(output, "Or add it:")
+			fmt.Fprintln(output, "  gorse-cli application add "+name+" --endpoint http://localhost:8088")
+			os.Exit(1)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Name:\t\t%s\nEndpoint:\t%s\n", app.Name, app.Endpoint)
 	},

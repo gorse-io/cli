@@ -34,7 +34,16 @@ import (
 var rootCmd = &cobra.Command{Use: "gorse-cli", Short: "Gorse command line tool for cluster management"}
 
 func init() {
-	Register(rootCmd)
+	rootCmd.PersistentFlags().BoolP("version", "v", false, "gorse-cli version")
+	rootCmd.AddCommand(ApplicationCmd)
+	rootCmd.AddCommand(ItemCmd, UserCmd, FeedbackCmd, CategoryCmd)
+	rootCmd.AddCommand(GetClusterCmd)
+	rootCmd.AddCommand(GetStatsCmd)
+	rootCmd.AddCommand(RecommendCmd)
+	rootCmd.AddCommand(PipelineCmd)
+	rootCmd.AddCommand(PsCmd)
+	rootCmd.AddCommand(DumpCmd)
+	rootCmd.AddCommand(RestoreCmd)
 }
 
 func executeRawCommand(root *cobra.Command, input string, args ...string) (string, error) {
