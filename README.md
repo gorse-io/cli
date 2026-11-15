@@ -46,3 +46,11 @@ scoop install gorse-cli
 ```sh
 go install github.com/gorse-io/cli@latest
 ```
+
+## Shell Completion
+
+For shell completion setup instructions, replace `<shell>` with `bash`, `zsh`, `fish`, or `powershell` and run:
+
+```bash
+gorse-cli completion <shell> --help
+```
