@@ -16,9 +16,9 @@ builds:
       - darwin_arm64
     ldflags:
       - >-
-        -X 'main.Version={{ .Version }}'
-        -X 'main.GitCommit={{ .Commit }}'
-        -X 'main.BuildTime={{ .Date }}'
+        -X 'github.com/gorse-io/cli/internal.Version={{ .Version }}'
+        -X 'github.com/gorse-io/cli/internal.GitCommit={{ .Commit }}'
+        -X 'github.com/gorse-io/cli/internal.BuildTime={{ .Date }}'
 archives:
   - id: gorse-cli
     formats: [binary]
