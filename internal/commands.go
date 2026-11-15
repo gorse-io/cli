@@ -85,19 +85,13 @@ func init() {
 	RecommendCmd.AddCommand(getItemToItemCmd)
 	RecommendCmd.AddCommand(getUserToUserCmd)
 
-	PipelineCmd.AddCommand(pipelineGetCmd)
-	PipelineCmd.AddCommand(pipelineSchemaCmd)
-	PipelineCmd.AddCommand(pipelinePatchCmd)
-	PipelineCmd.AddCommand(pipelineResetCmd)
-	PipelineCmd.AddCommand(newPipelineItemToItemCmd(), newPipelineUserToUserCmd(), newPipelineNonPersonalizedCmd(), newPipelineExternalCmd(), newPipelineCollaborativeCmd())
-
 	applicationAddCmd.Flags().String("endpoint", "", "Gorse base URL (default: GORSE_ADMIN_ENDPOINT)")
 	applicationAddCmd.Flags().String("api-key", "", "Gorse admin API key (default: GORSE_ADMIN_API_KEY; prefer prompt to avoid shell history)")
 	for _, cmd := range []*cobra.Command{
 		getCategoriesCmd, PsCmd,
 		GetStatsCmd, getUserCmd, getUsersCmd, getItemCmd, getItemsCmd, getFeedbackCmd, getLatestCmd,
 		getNonPersonalizedCmd, recommendUserCmd, getItemToItemCmd, getUserToUserCmd,
-		pipelineGetCmd, pipelineSchemaCmd, pipelinePatchCmd, pipelineResetCmd, DumpCmd, RestoreCmd,
+		DumpCmd, RestoreCmd,
 	} {
 		cmd.Flags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
 		cmd.Flags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
