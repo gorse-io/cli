@@ -1,5 +1,6 @@
 # Gorse CLI
 
+[![CI](https://github.com/gorse-io/cli/actions/workflows/ci.yml/badge.svg)](https://github.com/gorse-io/cli/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/gorse-io/cli/branch/main/graph/badge.svg)](https://codecov.io/gh/gorse-io/cli)
 [![GitHub release](https://img.shields.io/github/v/release/gorse-io/cli)](https://github.com/gorse-io/cli/releases/latest)
 [![GitHub downloads](https://img.shields.io/github/downloads/gorse-io/cli/total)](https://github.com/gorse-io/cli/releases)
