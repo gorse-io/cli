@@ -416,13 +416,3 @@ var applicationCurrentCmd = &cobra.Command{
 		fmt.Fprintf(cmd.OutOrStdout(), "Name:\t\t%s\nEndpoint:\t%s\n", app.Name, app.Endpoint)
 	},
 }
-
-func init() {
-	ApplicationCmd.AddCommand(applicationAddCmd)
-	ApplicationCmd.AddCommand(applicationListCmd)
-	ApplicationCmd.AddCommand(applicationUseCmd)
-	ApplicationCmd.AddCommand(applicationDeleteCmd)
-	ApplicationCmd.AddCommand(applicationCurrentCmd)
-	applicationAddCmd.Flags().String("endpoint", "", "Gorse base URL (default: GORSE_ADMIN_ENDPOINT)")
-	applicationAddCmd.Flags().String("api-key", "", "Gorse admin API key (default: GORSE_ADMIN_API_KEY; prefer prompt to avoid shell history)")
-}

@@ -159,11 +159,3 @@ var pipelineResetCmd = &cobra.Command{
 		fmt.Fprintln(cmd.OutOrStdout(), "Pipeline reset to defaults.")
 	},
 }
-
-func init() {
-	PipelineCmd.AddCommand(pipelineGetCmd)
-	PipelineCmd.AddCommand(pipelineSchemaCmd)
-	PipelineCmd.AddCommand(pipelinePatchCmd)
-	PipelineCmd.AddCommand(pipelineResetCmd)
-	addClientFlags(pipelineGetCmd, pipelineSchemaCmd, pipelinePatchCmd, pipelineResetCmd)
-}

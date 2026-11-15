@@ -41,8 +41,3 @@ var getCategoriesCmd = &cobra.Command{
 		printArrayTable(cmd, categories)
 	},
 }
-
-func init() {
-	CategoryCmd.AddCommand(getCategoriesCmd)
-	addClientFlags(getCategoriesCmd)
-}

@@ -73,9 +73,3 @@ var getItemsCmd = &cobra.Command{
 		printArrayTable(cmd, items.Items)
 	},
 }
-
-func init() {
-	ItemCmd.AddCommand(getItemCmd, getItemsCmd)
-	getItemsCmd.Flags().IntP("n", "n", 0, "Number of returned items")
-	addClientFlags(getItemCmd, getItemsCmd)
-}

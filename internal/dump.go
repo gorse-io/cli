@@ -42,7 +42,3 @@ var DumpCmd = &cobra.Command{
 		fmt.Fprintln(cmd.OutOrStdout(), "Data dumped to "+outputPath)
 	},
 }
-
-func init() {
-	addClientFlags(DumpCmd)
-}

@@ -33,7 +33,3 @@ var GetStatsCmd = &cobra.Command{
 		printStruct(cmd, stats)
 	},
 }
-
-func init() {
-	addClientFlags(GetStatsCmd)
-}

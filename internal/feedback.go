@@ -82,12 +82,3 @@ var getFeedbackCmd = &cobra.Command{
 		printArrayTable(cmd, feedback)
 	},
 }
-
-func init() {
-	FeedbackCmd.AddCommand(getFeedbackCmd)
-	getFeedbackCmd.Flags().IntP("n", "n", 0, "Number of returned feedback")
-	getFeedbackCmd.Flags().String("type", "", "Filter by feedback type")
-	getFeedbackCmd.Flags().String("user", "", "Filter by user ID")
-	getFeedbackCmd.Flags().String("item", "", "Filter by item ID")
-	addClientFlags(getFeedbackCmd)
-}

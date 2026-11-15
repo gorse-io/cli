@@ -34,7 +34,3 @@ var GetClusterCmd = &cobra.Command{
 		printArrayTable(cmd, cluster)
 	},
 }
-
-func init() {
-	addClientFlags(GetClusterCmd)
-}

@@ -45,7 +45,3 @@ var PsCmd = &cobra.Command{
 		printTable(cmd.OutOrStdout(), []string{"Tracer", "Name", "Status", "Progress", "Error", "StartTime", "FinishTime"}, rows)
 	},
 }
-
-func init() {
-	addClientFlags(PsCmd)
-}

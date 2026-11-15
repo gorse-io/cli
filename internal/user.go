@@ -60,9 +60,3 @@ var getUsersCmd = &cobra.Command{
 		printArrayTable(cmd, users.Users)
 	},
 }
-
-func init() {
-	UserCmd.AddCommand(getUserCmd, getUsersCmd)
-	getUsersCmd.Flags().IntP("n", "n", 0, "Number of returned users")
-	addClientFlags(getUserCmd, getUsersCmd)
-}

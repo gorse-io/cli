@@ -57,7 +57,3 @@ var RestoreCmd = &cobra.Command{
 			stats.Users, stats.Items, stats.Feedback, stats.Duration)
 	},
 }
-
-func init() {
-	addClientFlags(RestoreCmd)
-}

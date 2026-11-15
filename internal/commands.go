@@ -69,10 +69,55 @@ func newClient(cmd *cobra.Command) *adminclient.AdminClient {
 	return adminclient.NewAdminClient(endpoint, apiKey)
 }
 
-func addClientFlags(commands ...*cobra.Command) {
-	for _, cmd := range commands {
+func init() {
+	ApplicationCmd.AddCommand(applicationAddCmd)
+	ApplicationCmd.AddCommand(applicationListCmd)
+	ApplicationCmd.AddCommand(applicationUseCmd)
+	ApplicationCmd.AddCommand(applicationDeleteCmd)
+	ApplicationCmd.AddCommand(applicationCurrentCmd)
+	CategoryCmd.AddCommand(getCategoriesCmd)
+	UserCmd.AddCommand(getUserCmd, getUsersCmd)
+	ItemCmd.AddCommand(getItemCmd, getItemsCmd)
+	FeedbackCmd.AddCommand(getFeedbackCmd)
+	RecommendCmd.AddCommand(recommendUserCmd)
+	RecommendCmd.AddCommand(getLatestCmd)
+	RecommendCmd.AddCommand(getNonPersonalizedCmd)
+	RecommendCmd.AddCommand(getItemToItemCmd)
+	RecommendCmd.AddCommand(getUserToUserCmd)
+
+	PipelineCmd.AddCommand(pipelineGetCmd)
+	PipelineCmd.AddCommand(pipelineSchemaCmd)
+	PipelineCmd.AddCommand(pipelinePatchCmd)
+	PipelineCmd.AddCommand(pipelineResetCmd)
+
+	applicationAddCmd.Flags().String("endpoint", "", "Gorse base URL (default: GORSE_ADMIN_ENDPOINT)")
+	applicationAddCmd.Flags().String("api-key", "", "Gorse admin API key (default: GORSE_ADMIN_API_KEY; prefer prompt to avoid shell history)")
+	for _, cmd := range []*cobra.Command{
+		GetClusterCmd, getCategoriesCmd, PsCmd,
+		GetStatsCmd, getUserCmd, getUsersCmd, getItemCmd, getItemsCmd, getFeedbackCmd, getLatestCmd,
+		getNonPersonalizedCmd, recommendUserCmd, getItemToItemCmd, getUserToUserCmd,
+		pipelineGetCmd, pipelineSchemaCmd, pipelinePatchCmd, pipelineResetCmd, DumpCmd, RestoreCmd,
+	} {
 		cmd.Flags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
 		cmd.Flags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
 		cmd.Flags().String("application", "", "Gorse CLI application name")
 	}
+
+	getUsersCmd.Flags().IntP("n", "n", 0, "Number of returned users")
+	getItemsCmd.Flags().IntP("n", "n", 0, "Number of returned items")
+	getFeedbackCmd.Flags().IntP("n", "n", 0, "Number of returned feedback")
+	getFeedbackCmd.Flags().String("type", "", "Filter by feedback type")
+	getFeedbackCmd.Flags().String("user", "", "Filter by user ID")
+	getFeedbackCmd.Flags().String("item", "", "Filter by item ID")
+	getLatestCmd.Flags().IntP("n", "n", 0, "Number of returned records")
+	getLatestCmd.Flags().StringArray("category", nil, "Filter by category, repeatable")
+	getNonPersonalizedCmd.Flags().IntP("n", "n", 0, "Number of returned records")
+	getNonPersonalizedCmd.Flags().StringArray("category", nil, "Filter by category, repeatable")
+	getNonPersonalizedCmd.Flags().String("user-id", "", "Remove read items of a user")
+	recommendUserCmd.Flags().IntP("n", "n", 0, "Number of returned items")
+	recommendUserCmd.Flags().StringArray("category", nil, "Filter by category, repeatable")
+	getItemToItemCmd.Flags().IntP("n", "n", 0, "Number of returned records")
+	getItemToItemCmd.Flags().StringArray("category", nil, "Filter by category, repeatable")
+	getUserToUserCmd.Flags().IntP("n", "n", 0, "Number of returned records")
+
 }
