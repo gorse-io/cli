@@ -46,9 +46,9 @@ func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
 		switch {
 		case endpoint == "" && apiKey == "":
 			fatal(cmd,
-				"no Gorse context is selected and no endpoint/API key was provided.",
-				"Create a context:",
-				"  gorse-cli context add dev --endpoint http://localhost:8088",
+				"no Gorse application is selected and no endpoint/API key was provided.",
+				"Create an application:",
+				"  gorse-cli application add dev --endpoint http://localhost:8088",
 				"Or use environment variables:",
 				"  GORSE_ADMIN_ENDPOINT=http://localhost:8088 GORSE_ADMIN_API_KEY=<api-key> "+cmd.CommandPath(),
 				"Or pass credentials for this command:",
@@ -57,8 +57,8 @@ func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
 		case endpoint == "":
 			fatal(cmd,
 				"missing Gorse base URL.",
-				"Use a saved context:",
-				"  gorse-cli context use <name>",
+				"Use a saved application:",
+				"  gorse-cli application use <name>",
 				"Or set an environment variable:",
 				"  GORSE_ADMIN_ENDPOINT=http://localhost:8088 "+cmd.CommandPath(),
 				"Or pass an endpoint:",
@@ -67,8 +67,8 @@ func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
 		case apiKey == "":
 			fatal(cmd,
 				"missing Gorse admin API key.",
-				"Save it in a context:",
-				"  gorse-cli context add <name> --endpoint http://localhost:8088",
+				"Save it in an application:",
+				"  gorse-cli application add <name> --endpoint http://localhost:8088",
 				"Or set an environment variable:",
 				"  GORSE_ADMIN_API_KEY=<api-key> "+cmd.CommandPath(),
 				"Or pass it for this command:",
@@ -569,12 +569,12 @@ var getUserToUserCmd = &cobra.Command{
 func Register(rootCmd *cobra.Command) {
 	rootCmd.Run = runRoot
 	rootCmd.PersistentFlags().BoolP("version", "v", false, "gorse-cli version")
-	rootCmd.AddCommand(contextCmd)
-	contextCmd.AddCommand(contextAddCmd)
-	contextCmd.AddCommand(contextListCmd)
-	contextCmd.AddCommand(contextUseCmd)
-	contextCmd.AddCommand(contextDeleteCmd)
-	contextCmd.AddCommand(contextCurrentCmd)
+	rootCmd.AddCommand(applicationCmd)
+	applicationCmd.AddCommand(applicationAddCmd)
+	applicationCmd.AddCommand(applicationListCmd)
+	applicationCmd.AddCommand(applicationUseCmd)
+	applicationCmd.AddCommand(applicationDeleteCmd)
+	applicationCmd.AddCommand(applicationCurrentCmd)
 	rootCmd.AddCommand(itemCmd, userCmd, feedbackCmd, categoryCmd)
 	rootCmd.AddCommand(getClusterCmd)
 	rootCmd.AddCommand(getStatsCmd)
@@ -598,17 +598,17 @@ func Register(rootCmd *cobra.Command) {
 	rootCmd.AddCommand(dumpCmd)
 	rootCmd.AddCommand(restoreCmd)
 
-	contextAddCmd.Flags().String("endpoint", "", "Gorse base URL (default: GORSE_ADMIN_ENDPOINT)")
-	contextAddCmd.Flags().String("api-key", "", "Gorse admin API key (default: GORSE_ADMIN_API_KEY; prefer prompt to avoid shell history)")
+	applicationAddCmd.Flags().String("endpoint", "", "Gorse base URL (default: GORSE_ADMIN_ENDPOINT)")
+	applicationAddCmd.Flags().String("api-key", "", "Gorse admin API key (default: GORSE_ADMIN_API_KEY; prefer prompt to avoid shell history)")
 	for _, cmd := range []*cobra.Command{
 		getClusterCmd, getCategoriesCmd, psCmd,
 		getStatsCmd, getUserCmd, getUsersCmd, getItemCmd, getItemsCmd, getFeedbackCmd, getLatestCmd,
 		getNonPersonalizedCmd, recommendUserCmd, getItemToItemCmd, getUserToUserCmd,
 		pipelineGetCmd, pipelineSchemaCmd, pipelinePatchCmd, pipelineResetCmd, dumpCmd, restoreCmd,
 	} {
-		cmd.Flags().String("endpoint", "", "Gorse base URL (default: selected context or GORSE_ADMIN_ENDPOINT)")
-		cmd.Flags().String("api-key", "", "Gorse admin API key (default: selected context or GORSE_ADMIN_API_KEY)")
-		cmd.Flags().String("context", "", "Gorse CLI context name")
+		cmd.Flags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
+		cmd.Flags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
+		cmd.Flags().String("application", "", "Gorse CLI application name")
 	}
 
 	getUsersCmd.Flags().IntP("n", "n", 0, "Number of returned users")
