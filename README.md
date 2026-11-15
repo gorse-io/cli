@@ -1,5 +1,6 @@
 # Gorse CLI
 
+[![codecov](https://codecov.io/gh/gorse-io/cli/branch/main/graph/badge.svg)](https://codecov.io/gh/gorse-io/cli)
 [![GitHub release](https://img.shields.io/github/v/release/gorse-io/cli)](https://github.com/gorse-io/cli/releases/latest)
 [![GitHub downloads](https://img.shields.io/github/downloads/gorse-io/cli/total)](https://github.com/gorse-io/cli/releases)
 [![npm version](https://img.shields.io/npm/v/%40gorse%2Fcli)](https://www.npmjs.com/package/@gorse/cli)
