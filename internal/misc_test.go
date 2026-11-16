@@ -76,6 +76,14 @@ func (s *CLITestSuite) SetupSuite() {
 	s.root.AddCommand(ApplicationCmd, PipelineCmd)
 }
 
+func (s *CLITestSuite) TearDownTest() {
+	for _, name := range []string{"endpoint", "api-key", "application"} {
+		flag := s.root.PersistentFlags().Lookup(name)
+		s.NoError(flag.Value.Set(flag.DefValue))
+		flag.Changed = false
+	}
+}
+
 func (s *CLITestSuite) TearDownSuite() {
 	s.master.Shutdown()
 	select {
