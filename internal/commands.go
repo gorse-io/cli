@@ -93,7 +93,7 @@ func init() {
 	applicationAddCmd.Flags().String("endpoint", "", "Gorse base URL (default: GORSE_ADMIN_ENDPOINT)")
 	applicationAddCmd.Flags().String("api-key", "", "Gorse admin API key (default: GORSE_ADMIN_API_KEY; prefer prompt to avoid shell history)")
 	for _, cmd := range []*cobra.Command{
-		GetClusterCmd, getCategoriesCmd, PsCmd,
+		getCategoriesCmd, PsCmd,
 		GetStatsCmd, getUserCmd, getUsersCmd, getItemCmd, getItemsCmd, getFeedbackCmd, getLatestCmd,
 		getNonPersonalizedCmd, recommendUserCmd, getItemToItemCmd, getUserToUserCmd,
 		pipelineGetCmd, pipelineSchemaCmd, pipelinePatchCmd, pipelineResetCmd, DumpCmd, RestoreCmd,

@@ -37,7 +37,6 @@ func init() {
 	rootCmd.PersistentFlags().BoolP("version", "v", false, "gorse-cli version")
 	rootCmd.AddCommand(ApplicationCmd)
 	rootCmd.AddCommand(ItemCmd, UserCmd, FeedbackCmd, CategoryCmd)
-	rootCmd.AddCommand(GetClusterCmd)
 	rootCmd.AddCommand(GetStatsCmd)
 	rootCmd.AddCommand(RecommendCmd)
 	rootCmd.AddCommand(PipelineCmd)
@@ -212,13 +211,6 @@ func (s *CLITestSuite) requireNoBoxDrawing(out string) {
 	s.Require().NotContains(out, "┌")
 	s.Require().NotContains(out, "│")
 	s.Require().NotContains(out, "└")
-}
-
-func (s *CLITestSuite) TestClusterInfo() {
-	s.requireCommandOutputLines([]string{"cluster-info"},
-		`^HOSTNAME\s+TYPE\s+UUID\s+UPDATE-TIME\s+VERSION$`,
-		`^localhost\s+Server\s+server-node\s+`+rfc3339Regexp+`\s+v1$`,
-	)
 }
 
 func (s *CLITestSuite) TestGetCategories() {
