@@ -3,7 +3,7 @@ module github.com/gorse-io/cli
 go 1.27.0
 
 require (
-	github.com/evanphx/json-patch/v5 v5.9.11
+	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gorse-io/gorse v0.5.10-0.20261018142309-d3186be36756
 	github.com/gorse-io/gorse-go v0.5.0-alpha.3.0.20260613082921-062d740c10a2
 	github.com/samber/lo v1.53.0
@@ -107,7 +107,6 @@ require (
 	github.com/go-playground/validator/v10 v10.30.1 // indirect
 	github.com/go-resty/resty/v2 v2.17.2 // indirect
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
-	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
