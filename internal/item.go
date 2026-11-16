@@ -15,9 +15,11 @@
 package internal
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	gorse "github.com/gorse-io/gorse-go"
 	"github.com/samber/lo"
@@ -30,6 +32,50 @@ var ItemCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		_ = cmd.Help()
+	},
+}
+
+var addItemCmd = &cobra.Command{
+	Use:   "add <item-id>",
+	Short: "Add an item",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		item := gorse.Item{ItemId: args[0], Comment: lo.Must(cmd.Flags().GetString("comment"))}
+		if err := json.Unmarshal([]byte(lo.Must(cmd.Flags().GetString("labels"))), &item.Labels); err != nil {
+			return fmt.Errorf("invalid --labels: %w", err)
+		}
+		item.Categories = lo.Must(cmd.Flags().GetStringArray("category"))
+		item.IsHidden = lo.Must(cmd.Flags().GetBool("is-hidden"))
+		if timestamp := lo.Must(cmd.Flags().GetString("timestamp")); timestamp != "" {
+			var err error
+			item.Timestamp, err = time.Parse(time.RFC3339, timestamp)
+			if err != nil {
+				return fmt.Errorf("invalid --timestamp: %w", err)
+			}
+		}
+		result, err := newClient(cmd).InsertItem(cmd.Context(), item)
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		printStruct(cmd, result)
+		return nil
+	},
+}
+
+var deleteItemCmd = &cobra.Command{
+	Use:   "delete <item-id>",
+	Short: "Delete an item",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if !lo.Must(cmd.Flags().GetBool("yes")) {
+			return fmt.Errorf("deletion requires confirmation with --yes")
+		}
+		result, err := newClient(cmd).DeleteItem(cmd.Context(), args[0])
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		printStruct(cmd, result)
+		return nil
 	},
 }
 

@@ -81,10 +81,14 @@ func init() {
 	UserCmd.AddCommand(
 		getUserCmd,
 		getUsersCmd,
+		addUserCmd,
+		deleteUserCmd,
 	)
 	ItemCmd.AddCommand(
 		getItemCmd,
 		getItemsCmd,
+		addItemCmd,
+		deleteItemCmd,
 	)
 	FeedbackCmd.AddCommand(getFeedbackCmd)
 	RecommendCmd.AddCommand(
@@ -94,6 +98,17 @@ func init() {
 		getItemToItemCmd,
 		getUserToUserCmd,
 	)
+
+	for _, cmd := range []*cobra.Command{addItemCmd, addUserCmd} {
+		cmd.Flags().String("labels", "{}", "Labels as JSON")
+		cmd.Flags().String("comment", "", "Comment")
+	}
+	addItemCmd.Flags().StringArray("category", nil, "Item category, repeatable")
+	addItemCmd.Flags().Bool("is-hidden", false, "Hide item from recommendations")
+	addItemCmd.Flags().String("timestamp", "", "Item timestamp in RFC3339 format")
+	for _, cmd := range []*cobra.Command{deleteItemCmd, deleteUserCmd} {
+		cmd.Flags().Bool("yes", false, "Confirm deletion (required)")
+	}
 
 	getUsersCmd.Flags().IntP("n", "n", 0, "Number of returned users")
 	getItemsCmd.Flags().IntP("n", "n", 0, "Number of returned items")
