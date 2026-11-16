@@ -23,7 +23,6 @@ func main() {
 	rootCmd.PersistentFlags().BoolP("version", "v", false, "gorse-cli version")
 	rootCmd.AddCommand(internal.ApplicationCmd)
 	rootCmd.AddCommand(internal.ItemCmd, internal.UserCmd, internal.FeedbackCmd, internal.CategoryCmd)
-	rootCmd.AddCommand(internal.GetClusterCmd)
 	rootCmd.AddCommand(internal.GetStatsCmd)
 	rootCmd.AddCommand(internal.RecommendCmd)
 	rootCmd.AddCommand(internal.PipelineCmd)
