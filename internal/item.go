@@ -62,6 +62,54 @@ var addItemCmd = &cobra.Command{
 	},
 }
 
+var updateItemCmd = &cobra.Command{
+	Use:   "update <item-id>",
+	Short: "Update item fields",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var patch gorse.ItemPatch
+		if cmd.Flags().Changed("comment") {
+			patch.Comment = lo.ToPtr(lo.Must(cmd.Flags().GetString("comment")))
+		}
+		if cmd.Flags().Changed("labels") {
+			if err := json.Unmarshal([]byte(lo.Must(cmd.Flags().GetString("labels"))), &patch.Labels); err != nil {
+				return fmt.Errorf("invalid --labels: %w", err)
+			}
+			if patch.Labels == nil {
+				return fmt.Errorf("invalid --labels: null does not update labels; use {} or [] to clear")
+			}
+		}
+		if cmd.Flags().Changed("is-hidden") {
+			patch.IsHidden = lo.ToPtr(lo.Must(cmd.Flags().GetBool("is-hidden")))
+		}
+		if cmd.Flags().Changed("category") {
+			patch.Categories = lo.Must(cmd.Flags().GetStringArray("category"))
+			if lo.Contains(patch.Categories, "") {
+				if len(patch.Categories) != 1 {
+					return fmt.Errorf("invalid --category: cannot combine an empty value with other categories")
+				}
+				patch.Categories = []string{}
+			}
+		}
+		if cmd.Flags().Changed("timestamp") {
+			timestamp, err := time.Parse(time.RFC3339, lo.Must(cmd.Flags().GetString("timestamp")))
+			if err != nil {
+				return fmt.Errorf("invalid --timestamp: %w", err)
+			}
+			patch.Timestamp = &timestamp
+		}
+		if patch.Comment == nil && patch.Labels == nil && patch.IsHidden == nil && patch.Categories == nil && patch.Timestamp == nil {
+			return fmt.Errorf("at least one update flag is required")
+		}
+		result, err := newClient(cmd).UpdateItem(cmd.Context(), args[0], patch)
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		printStruct(cmd, result)
+		return nil
+	},
+}
+
 var deleteItemCmd = &cobra.Command{
 	Use:   "delete <item-id>",
 	Short: "Delete an item",
@@ -139,6 +187,7 @@ func init() {
 		getItemCmd,
 		listItemCmd,
 		addItemCmd,
+		updateItemCmd,
 		deleteItemCmd,
 		itemCategoriesCmd,
 	)
@@ -148,6 +197,11 @@ func init() {
 	addItemCmd.Flags().StringArray("category", nil, "Item category, repeatable")
 	addItemCmd.Flags().Bool("is-hidden", false, "Hide item from recommendations")
 	addItemCmd.Flags().String("timestamp", "", "Item timestamp in RFC3339 format")
+	updateItemCmd.Flags().String("labels", "", "Replace labels with JSON ({} or [] to clear)")
+	updateItemCmd.Flags().String("comment", "", "Replace comment (empty value clears)")
+	updateItemCmd.Flags().StringArray("category", nil, "Replace categories, repeatable (empty value clears all)")
+	updateItemCmd.Flags().Bool("is-hidden", false, "Hide item from recommendations")
+	updateItemCmd.Flags().String("timestamp", "", "Item timestamp in RFC3339 format")
 	deleteItemCmd.Flags().Bool("yes", false, "Confirm deletion (required)")
 	listItemCmd.Flags().IntP("n", "n", 0, "Number of returned items")
 }

@@ -49,6 +49,35 @@ var addUserCmd = &cobra.Command{
 	},
 }
 
+var updateUserCmd = &cobra.Command{
+	Use:   "update <user-id>",
+	Short: "Update user fields",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var patch gorse.UserPatch
+		if cmd.Flags().Changed("comment") {
+			patch.Comment = lo.ToPtr(lo.Must(cmd.Flags().GetString("comment")))
+		}
+		if cmd.Flags().Changed("labels") {
+			if err := json.Unmarshal([]byte(lo.Must(cmd.Flags().GetString("labels"))), &patch.Labels); err != nil {
+				return fmt.Errorf("invalid --labels: %w", err)
+			}
+			if patch.Labels == nil {
+				return fmt.Errorf("invalid --labels: null does not update labels; use {} or [] to clear")
+			}
+		}
+		if patch.Comment == nil && patch.Labels == nil {
+			return fmt.Errorf("at least one update flag is required")
+		}
+		result, err := newClient(cmd).UpdateUser(cmd.Context(), args[0], patch)
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		printStruct(cmd, result)
+		return nil
+	},
+}
+
 var deleteUserCmd = &cobra.Command{
 	Use:   "delete <user-id>",
 	Short: "Delete a user",
@@ -103,11 +132,14 @@ func init() {
 		getUserCmd,
 		listUserCmd,
 		addUserCmd,
+		updateUserCmd,
 		deleteUserCmd,
 	)
 
 	addUserCmd.Flags().String("labels", "{}", "Labels as JSON")
 	addUserCmd.Flags().String("comment", "", "Comment")
+	updateUserCmd.Flags().String("labels", "", "Replace labels with JSON ({} or [] to clear)")
+	updateUserCmd.Flags().String("comment", "", "Replace comment (empty value clears)")
 	deleteUserCmd.Flags().Bool("yes", false, "Confirm deletion (required)")
 	listUserCmd.Flags().IntP("n", "n", 0, "Number of returned users")
 }
