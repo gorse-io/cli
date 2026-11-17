@@ -17,6 +17,92 @@ func (s *CLITestSuite) TestCategories() {
 	s.EqualTable([][]string{{"INDEX", "VALUE"}, {"0", "news"}, {"1", "tech"}}, out)
 }
 
+func (s *CLITestSuite) TestItemUpdate() {
+	ctx := s.T().Context()
+	_, err := s.Command("item", "add", "updated-item", "--comment", "original comment",
+		"--category", "news", "--category", "tech", "--is-hidden",
+		"--timestamp", "2026-01-02T03:04:05Z", "--labels", `{"genre":"science","keep":"original"}`)
+	s.Require().NoError(err)
+	expected, err := s.master.DataClient.GetItem(ctx, "updated-item")
+	s.Require().NoError(err)
+	expected.UpdateAt = time.Time{}
+	check := func() {
+		s.T().Helper()
+		actual, err := s.master.DataClient.GetItem(ctx, "updated-item")
+		s.Require().NoError(err)
+		actual.UpdateAt = time.Time{}
+		s.Equal(expected, actual)
+	}
+
+	out, err := s.Command("item", "update", "updated-item", "--comment", "updated comment")
+	s.Require().NoError(err)
+	s.Contains(out, "RowAffected: 1")
+	expected.Comment = "updated comment"
+	check()
+	_, err = s.Command("item", "update", "updated-item", "--is-hidden=false")
+	s.Require().NoError(err)
+	expected.IsHidden = false
+	check()
+	_, err = s.Command("item", "update", "updated-item", "--category", "books", "--category", "art")
+	s.Require().NoError(err)
+	expected.Categories = []string{"books", "art"}
+	check()
+	_, err = s.Command("item", "update", "updated-item", "--timestamp", "2026-02-03T04:05:06Z")
+	s.Require().NoError(err)
+	expected.Timestamp = time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
+	check()
+	_, err = s.Command("item", "update", "updated-item", "--labels", `{"genre":"fiction"}`)
+	s.Require().NoError(err)
+	expected.Labels = map[string]any{"genre": "fiction"}
+	check()
+	_, err = s.Command("item", "update", "updated-item", "--comment=")
+	s.Require().NoError(err)
+	expected.Comment = ""
+	check()
+	_, err = s.Command("item", "update", "updated-item", "--category=")
+	s.Require().NoError(err)
+	expected.Categories = []string{}
+	check()
+	_, err = s.Command("item", "update", "updated-item", "--labels", "{}")
+	s.Require().NoError(err)
+	expected.Labels = map[string]any{}
+	check()
+	_, err = s.Command("item", "update", "updated-item", "--timestamp", "0001-01-01T00:00:00Z")
+	s.Require().NoError(err)
+	expected.Timestamp = time.Time{}
+	check()
+	_, err = s.Command("item", "update", "updated-item", "--is-hidden", "--comment", "final comment", "--labels", "[]")
+	s.Require().NoError(err)
+	expected.IsHidden = true
+	expected.Comment = "final comment"
+	expected.Labels = []any{}
+	check()
+
+	for _, tc := range []struct {
+		flags []string
+		error string
+	}{
+		{nil, "at least one update flag"},
+		{[]string{"--labels", "invalid"}, "invalid --labels"},
+		{[]string{"--labels", "null"}, "invalid --labels"},
+		{[]string{"--timestamp", "invalid"}, "invalid --timestamp"},
+		{[]string{"--timestamp="}, "invalid --timestamp"},
+		{[]string{"--category=", "--category", "news"}, "invalid --category"},
+		{[]string{"--labels", "true", "--comment", "must not change"}, "API request failed"},
+	} {
+		before, err := s.master.DataClient.GetItem(ctx, "updated-item")
+		s.Require().NoError(err)
+		out, err = s.Command(append([]string{"item", "update", "updated-item"}, tc.flags...)...)
+		s.ErrorContains(err, tc.error)
+		s.Empty(out)
+		after, err := s.master.DataClient.GetItem(ctx, "updated-item")
+		s.Require().NoError(err)
+		s.Equal(before, after)
+	}
+	_, err = s.Command("item", "update")
+	s.ErrorContains(err, "accepts 1 arg(s)")
+}
+
 func (s *CLITestSuite) TestItem() {
 	out, err := s.Command("item", "add", "added-item", "--comment", "new item",
 		"--category", "news", "--category", "tech", "--is-hidden",
