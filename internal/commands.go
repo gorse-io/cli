@@ -80,13 +80,13 @@ func init() {
 	CategoryCmd.AddCommand(getCategoriesCmd)
 	UserCmd.AddCommand(
 		getUserCmd,
-		getUsersCmd,
+		listUserCmd,
 		addUserCmd,
 		deleteUserCmd,
 	)
 	ItemCmd.AddCommand(
 		getItemCmd,
-		getItemsCmd,
+		listItemCmd,
 		addItemCmd,
 		deleteItemCmd,
 	)
@@ -99,19 +99,8 @@ func init() {
 		getUserToUserCmd,
 	)
 
-	for _, cmd := range []*cobra.Command{addItemCmd, addUserCmd} {
-		cmd.Flags().String("labels", "{}", "Labels as JSON")
-		cmd.Flags().String("comment", "", "Comment")
-	}
-	addItemCmd.Flags().StringArray("category", nil, "Item category, repeatable")
-	addItemCmd.Flags().Bool("is-hidden", false, "Hide item from recommendations")
-	addItemCmd.Flags().String("timestamp", "", "Item timestamp in RFC3339 format")
-	for _, cmd := range []*cobra.Command{deleteItemCmd, deleteUserCmd} {
-		cmd.Flags().Bool("yes", false, "Confirm deletion (required)")
-	}
-
-	getUsersCmd.Flags().IntP("n", "n", 0, "Number of returned users")
-	getItemsCmd.Flags().IntP("n", "n", 0, "Number of returned items")
+	listUserCmd.Flags().IntP("n", "n", 0, "Number of returned users")
+	listItemCmd.Flags().IntP("n", "n", 0, "Number of returned items")
 	getFeedbackCmd.Flags().IntP("n", "n", 0, "Number of returned feedback")
 	getFeedbackCmd.Flags().String("type", "", "Filter by feedback type")
 	getFeedbackCmd.Flags().String("user", "", "Filter by user ID")
