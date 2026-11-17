@@ -77,7 +77,6 @@ func init() {
 		applicationDeleteCmd,
 		applicationCurrentCmd,
 	)
-	CategoryCmd.AddCommand(getCategoriesCmd)
 	UserCmd.AddCommand(
 		getUserCmd,
 		listUserCmd,
@@ -89,6 +88,7 @@ func init() {
 		listItemCmd,
 		addItemCmd,
 		deleteItemCmd,
+		itemCategoriesCmd,
 	)
 	FeedbackCmd.AddCommand(getFeedbackCmd)
 	RecommendCmd.AddCommand(

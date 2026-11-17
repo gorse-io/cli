@@ -1,8 +1,6 @@
 package internal
 
 import (
-	"strings"
-
 	"github.com/gorse-io/gorse/storage"
 )
 
@@ -32,16 +30,18 @@ Labels:
 }
 `, out)
 
+	expected := [][]string{
+		{"USER-ID", "COMMENT", "LABELS"},
+		{"added-user", "new user", `{"role":"reader"}`},
+		{"minimal-user", "", "{}"},
+	}
 	out, err = s.Command("user", "list", "-n", "1")
 	s.Require().NoError(err)
-	s.Len(strings.Split(strings.TrimSpace(out), "\n"), 2)
-	s.Regexp(`(?m)^USER-ID\s+COMMENT\s+LABELS$`, out)
+	s.EqualTable(expected[:2], out)
 
 	out, err = s.Command("user", "list")
 	s.Require().NoError(err)
-	s.Len(strings.Split(strings.TrimSpace(out), "\n"), 3)
-	s.Regexp(`(?m)^added-user\s+new user\s+\{"role":"reader"\}$`, out)
-	s.Regexp(`(?m)^minimal-user\s+\{\}$`, out)
+	s.EqualTable(expected, out)
 
 	for _, flags := range [][]string{nil, {"--yes=false"}} {
 		_, err = s.Command(append([]string{"user", "delete", "added-user"}, flags...)...)

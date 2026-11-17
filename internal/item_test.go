@@ -1,11 +1,21 @@
 package internal
 
 import (
-	"strings"
 	"time"
 
 	"github.com/gorse-io/gorse/storage"
+	"github.com/gorse-io/gorse/storage/cache"
 )
+
+func (s *CLITestSuite) TestCategories() {
+	s.Require().NoError(s.master.CacheClient.AddScores(s.T().Context(), cache.ItemCategories, "", []cache.Score{
+		{Id: "news", Score: 2},
+		{Id: "tech", Score: 1},
+	}))
+	out, err := s.Command("item", "categories")
+	s.Require().NoError(err)
+	s.EqualTable([][]string{{"INDEX", "VALUE"}, {"0", "news"}, {"1", "tech"}}, out)
+}
 
 func (s *CLITestSuite) TestItem() {
 	out, err := s.Command("item", "add", "added-item", "--comment", "new item",
@@ -39,16 +49,18 @@ func (s *CLITestSuite) TestItem() {
 	s.Contains(out, "Timestamp: 2026-01-02T03:04:05Z\n")
 	s.Contains(out, `"genre": "science"`)
 
+	expected := [][]string{
+		{"ITEM-ID", "COMMENT", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS"},
+		{"added-item", "new item", `["news","tech"]`, "true", "2026-01-02T03:04:05Z", `{"embedding":[0.1,0.2],"genre":"science"}`},
+		{"minimal-item", "", "[]", "false", item.Timestamp.Format(time.RFC3339), "{}"},
+	}
 	out, err = s.Command("item", "list", "-n", "1")
 	s.Require().NoError(err)
-	s.Len(strings.Split(strings.TrimSpace(out), "\n"), 2)
-	s.Regexp(`(?m)^ITEM-ID\s+COMMENT\s+CATEGORIES\s+IS-HIDDEN\s+TIMESTAMP\s+LABELS$`, out)
+	s.EqualTable(expected[:2], out)
 
 	out, err = s.Command("item", "list")
 	s.Require().NoError(err)
-	s.Len(strings.Split(strings.TrimSpace(out), "\n"), 3)
-	s.Regexp(`(?m)^added-item\s+new item\s+\["news","tech"\]\s+true\s+2026-01-02T03:04:05Z\s+\{"embedding":\[0.1,0.2\],"genre":"science"\}$`, out)
-	s.Regexp(`(?m)^minimal-item\s+\[\]\s+false\s+`, out)
+	s.EqualTable(expected, out)
 
 	for _, flags := range [][]string{nil, {"--yes=false"}} {
 		_, err = s.Command(append([]string{"item", "delete", "added-item"}, flags...)...)

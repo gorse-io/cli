@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
+	"text/tabwriter"
 	"time"
 
 	"github.com/gorse-io/gorse/common/log"
@@ -84,6 +86,18 @@ func (s *CLITestSuite) TearDownSuite() {
 	case <-time.After(10 * time.Second):
 		s.T().Error("master did not stop")
 	}
+}
+
+func (s *CLITestSuite) EqualTable(expected [][]string, actual string) {
+	s.T().Helper()
+	var output bytes.Buffer
+	table := tabwriter.NewWriter(&output, 0, 8, 2, ' ', 0)
+	for _, row := range expected {
+		_, err := fmt.Fprintln(table, strings.Join(row, "\t"))
+		s.Require().NoError(err)
+	}
+	s.Require().NoError(table.Flush())
+	s.Equal(output.String(), actual)
 }
 
 func (s *CLITestSuite) Command(args ...string) (string, error) {

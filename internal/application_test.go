@@ -1,8 +1,6 @@
 package internal
 
 import (
-	"strings"
-
 	"github.com/zalando/go-keyring"
 )
 
@@ -43,11 +41,11 @@ func (s *CLITestSuite) TestApplications() {
 	// The list is sorted, marks the current application, and omits API keys.
 	stdout, err = s.Command("application", "list")
 	s.Require().NoError(err)
-	s.Equal([]string{
-		"CURRENT", "NAME", "ENDPOINT",
-		"*", "dev", "http://localhost:8090",
-		"prod", "http://localhost:8089",
-	}, strings.Fields(stdout))
+	s.EqualTable([][]string{
+		{"CURRENT", "NAME", "ENDPOINT"},
+		{"*", "dev", "http://localhost:8090"},
+		{"", "prod", "http://localhost:8089"},
+	}, stdout)
 
 	// Switching applications changes the current selection while retaining saved endpoints.
 	stdout, err = s.Command("application", "use", "prod")
@@ -69,7 +67,7 @@ func (s *CLITestSuite) TestApplications() {
 	s.Equal("Name:		prod\nEndpoint:	http://localhost:8089\n", stdout)
 	stdout, err = s.Command("application", "list")
 	s.Require().NoError(err)
-	s.Equal([]string{"CURRENT", "NAME", "ENDPOINT", "*", "prod", "http://localhost:8089"}, strings.Fields(stdout))
+	s.EqualTable([][]string{{"CURRENT", "NAME", "ENDPOINT"}, {"*", "prod", "http://localhost:8089"}}, stdout)
 
 	// Deleting the last application clears both the list and the current selection.
 	stdout, err = s.Command("application", "delete", "prod")
