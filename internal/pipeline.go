@@ -28,6 +28,7 @@ import (
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/gorse-io/gorse/client"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 )
 
@@ -705,6 +706,143 @@ var pipelineCollaborativeUpdateCmd = &cobra.Command{
 	},
 }
 
+var pipelineUpdateCmd = &cobra.Command{
+	Use: "update", Short: "Update global recommendation settings", Args: cobra.NoArgs,
+	RunE: pipelineUpdateSettings,
+}
+
+var pipelineDataSourceCmd = &cobra.Command{
+	Use: "data-source", Short: "Manage recommendation data sources", Args: cobra.NoArgs,
+}
+var pipelineDataSourceGetCmd = &cobra.Command{
+	Use: "get", Short: "Get data source settings", Args: cobra.NoArgs, RunE: pipelineGetSettings,
+}
+var pipelineDataSourceUpdateCmd = &cobra.Command{
+	Use: "update", Short: "Update data source settings", Args: cobra.NoArgs, RunE: pipelineUpdateSettings,
+}
+var pipelineSearchCmd = &cobra.Command{
+	Use: "search", Short: "Manage recommendation search", Args: cobra.NoArgs,
+}
+var pipelineSearchGetCmd = &cobra.Command{
+	Use: "get", Short: "Get search settings", Args: cobra.NoArgs, RunE: pipelineGetSettings,
+}
+var pipelineSearchUpdateCmd = &cobra.Command{
+	Use: "update", Short: "Update search settings", Args: cobra.NoArgs, RunE: pipelineUpdateSettings,
+}
+var pipelineRankerCmd = &cobra.Command{
+	Use: "ranker", Short: "Manage recommendation ranking", Args: cobra.NoArgs,
+}
+var pipelineRankerGetCmd = &cobra.Command{
+	Use: "get", Short: "Get ranker settings", Args: cobra.NoArgs, RunE: pipelineGetSettings,
+}
+var pipelineRankerUpdateCmd = &cobra.Command{
+	Use: "update", Short: "Update ranker settings", Args: cobra.NoArgs, RunE: pipelineUpdateSettings,
+}
+var pipelineFallbackCmd = &cobra.Command{
+	Use: "fallback", Short: "Manage fallback recommendations", Args: cobra.NoArgs,
+}
+var pipelineFallbackGetCmd = &cobra.Command{
+	Use: "get", Short: "Get fallback settings", Args: cobra.NoArgs, RunE: pipelineGetSettings,
+}
+var pipelineFallbackUpdateCmd = &cobra.Command{
+	Use: "update", Short: "Update fallback settings", Args: cobra.NoArgs, RunE: pipelineUpdateSettings,
+}
+var pipelineReplacementCmd = &cobra.Command{
+	Use: "replacement", Short: "Manage replacement recommendations", Args: cobra.NoArgs,
+}
+var pipelineReplacementGetCmd = &cobra.Command{
+	Use: "get", Short: "Get replacement settings", Args: cobra.NoArgs, RunE: pipelineGetSettings,
+}
+var pipelineReplacementUpdateCmd = &cobra.Command{
+	Use: "update", Short: "Update replacement settings", Args: cobra.NoArgs, RunE: pipelineUpdateSettings,
+}
+
+func pipelineGetSettings(cmd *cobra.Command, args []string) error {
+	var p Pipeline
+	if err := p.Load(newClient(cmd)); err != nil {
+		return err
+	}
+	return marshal(cmd, p.rawRecommend[strings.ReplaceAll(cmd.Parent().Name(), "-", "_")])
+}
+
+// Only changed local flags contribute to the patch. Inherited connection flags
+// must not turn a no-op update into a request.
+func pipelineUpdateSettings(cmd *cobra.Command, args []string) error {
+	changes := make(map[string]any)
+	cmd.LocalNonPersistentFlags().VisitAll(func(flag *pflag.Flag) {
+		if !flag.Changed {
+			return
+		}
+		path := strings.ReplaceAll(flag.Name, "-", "_")
+		switch flag.Name {
+		case "positive-feedback-type", "negative-feedback-type", "read-feedback-type":
+			path += "s"
+		case "column":
+			path = "columns"
+		case "recommender":
+			path = "recommenders"
+		case "early-stopping-patience":
+			path = "early_stopping.patience"
+		default:
+			for _, provider := range []string{"reranker", "decision"} {
+				if strings.HasPrefix(flag.Name, provider+"-") {
+					path = provider + "_api." + strings.TrimPrefix(path, provider+"_")
+				}
+			}
+		}
+		var value any
+		switch flag.Value.Type() {
+		case "string":
+			value, _ = cmd.Flags().GetString(flag.Name)
+		case "int":
+			value, _ = cmd.Flags().GetInt(flag.Name)
+		case "uint":
+			value, _ = cmd.Flags().GetUint(flag.Name)
+		case "bool":
+			value, _ = cmd.Flags().GetBool(flag.Name)
+		case "float64":
+			value, _ = cmd.Flags().GetFloat64(flag.Name)
+		case "duration":
+			duration, _ := cmd.Flags().GetDuration(flag.Name)
+			value = duration.String()
+		case "stringArray":
+			values, _ := cmd.Flags().GetStringArray(flag.Name)
+			// A single explicit empty value clears a list, rather than sending [""].
+			if len(values) == 1 && values[0] == "" {
+				values = []string{}
+			}
+			value = values
+		}
+		target := changes
+		keys := strings.Split(path, ".")
+		for _, key := range keys[:len(keys)-1] {
+			nested, ok := target[key].(map[string]any)
+			if !ok {
+				nested = make(map[string]any)
+				target[key] = nested
+			}
+			target = nested
+		}
+		target[keys[len(keys)-1]] = value
+	})
+	if len(changes) == 0 {
+		return fmt.Errorf("no changes supplied")
+	}
+	if cmd.Parent() != PipelineCmd {
+		changes = map[string]any{strings.ReplaceAll(cmd.Parent().Name(), "-", "_"): changes}
+	}
+	c := newClient(cmd)
+	var p Pipeline
+	if err := p.Load(c); err != nil {
+		return err
+	}
+	if err := p.SaveChanges(c, changes); err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), "Pipeline settings updated.")
+	return nil
+}
+
 // Pipeline manages recommendation configuration. Writes are read-modify-write:
 // the server has no compare-and-swap API; concurrent edits can overwrite changes.
 // The Master validates the submitted configuration using its actual rules.
@@ -712,6 +850,7 @@ var pipelineCollaborativeUpdateCmd = &cobra.Command{
 // gorse/config/config.go at d3186be36756. Keep fields and tags aligned when
 // updating the Gorse dependency.
 type Pipeline struct {
+	rawRecommend    map[string]any
 	CacheSize       int                     `mapstructure:"cache_size" validate:"gt=0"`
 	CacheExpire     time.Duration           `mapstructure:"cache_expire" validate:"gt=0"`
 	ContextSize     int                     `mapstructure:"context_size" validate:"gt=0"`
@@ -898,8 +1037,33 @@ func (p *Pipeline) Load(c *client.AdminClient) error {
 		}
 		seen[fullName] = true
 	}
+	value.rawRecommend = raw
 	*p = value
 	return nil
+}
+
+// SaveChanges overlays only requested fields onto the complete raw recommend
+// object. Master replaces that object, rather than merging a nested patch.
+// Retaining raw fields also preserves settings introduced by newer servers.
+func (p *Pipeline) SaveChanges(c *client.AdminClient, changes map[string]any) error {
+	mergePipelineChanges(p.rawRecommend, changes)
+	_, err := c.UpdateConfig(map[string]any{"recommend": p.rawRecommend})
+	return err
+}
+
+func mergePipelineChanges(target, changes map[string]any) {
+	for key, value := range changes {
+		if nested, ok := value.(map[string]any); ok {
+			current, ok := target[key].(map[string]any)
+			if !ok {
+				current = make(map[string]any)
+				target[key] = current
+			}
+			mergePipelineChanges(current, nested)
+		} else {
+			target[key] = value
+		}
+	}
 }
 
 // encodePipeline applies the upstream mapstructure tags and converts durations
@@ -934,6 +1098,49 @@ func (p *Pipeline) Save(c *client.AdminClient) error {
 }
 
 func init() {
+	PipelineCmd.AddCommand(pipelineUpdateCmd, pipelineDataSourceCmd, pipelineSearchCmd,
+		pipelineRankerCmd, pipelineFallbackCmd, pipelineReplacementCmd)
+	pipelineDataSourceCmd.AddCommand(pipelineDataSourceGetCmd, pipelineDataSourceUpdateCmd)
+	pipelineSearchCmd.AddCommand(pipelineSearchGetCmd, pipelineSearchUpdateCmd)
+	pipelineRankerCmd.AddCommand(pipelineRankerGetCmd, pipelineRankerUpdateCmd)
+	pipelineFallbackCmd.AddCommand(pipelineFallbackGetCmd, pipelineFallbackUpdateCmd)
+	pipelineReplacementCmd.AddCommand(pipelineReplacementGetCmd, pipelineReplacementUpdateCmd)
+
+	pipelineUpdateCmd.Flags().Int("cache-size", 0, "Recommendation cache size")
+	pipelineUpdateCmd.Flags().Duration("cache-expire", 0, "Recommendation cache expiration (e.g. 24h)")
+	pipelineUpdateCmd.Flags().Int("context-size", 0, "Recommendation context size")
+	pipelineUpdateCmd.Flags().Int("active-user-ttl", 0, "Active user time-to-live in days (0 disables expiration)")
+
+	pipelineDataSourceUpdateCmd.Flags().StringArray("positive-feedback-type", nil, "Positive feedback expression (repeat for each; empty clears the list)")
+	pipelineDataSourceUpdateCmd.Flags().StringArray("negative-feedback-type", nil, "Negative feedback expression (repeat for each; empty clears the list)")
+	pipelineDataSourceUpdateCmd.Flags().StringArray("read-feedback-type", nil, "Read feedback expression (repeat for each; empty clears the list)")
+	pipelineDataSourceUpdateCmd.Flags().Uint("positive-feedback-ttl", 0, "Positive feedback time-to-live in days (0 disables expiration)")
+	pipelineDataSourceUpdateCmd.Flags().Uint("item-ttl", 0, "Item time-to-live in days (0 disables expiration)")
+	pipelineSearchUpdateCmd.Flags().StringArray("column", nil, "Search column expression (repeat for each; empty clears the list)")
+
+	pipelineRankerUpdateCmd.Flags().String("type", "", "Ranker type: none, fm, reranker or decision")
+	pipelineRankerUpdateCmd.Flags().StringArray("recommender", nil, "Ordered recommender reference (repeat for each; empty clears the list)")
+	pipelineRankerUpdateCmd.Flags().Duration("cache-expire", 0, "Ranker cache expiration (e.g. 24h)")
+	pipelineRankerUpdateCmd.Flags().Duration("fit-period", 0, "Model fitting period (e.g. 1h)")
+	pipelineRankerUpdateCmd.Flags().Int("fit-epoch", 0, "Number of fitting epochs")
+	pipelineRankerUpdateCmd.Flags().Duration("optimize-period", 0, "Model optimization period (0s disables optimization)")
+	pipelineRankerUpdateCmd.Flags().Int("optimize-trials", 0, "Number of optimization trials")
+	pipelineRankerUpdateCmd.Flags().Int("early-stopping-patience", 0, "Early stopping patience")
+	for _, provider := range []string{"reranker", "decision"} {
+		pipelineRankerUpdateCmd.Flags().String(provider+"-url", "", "Provider API URL")
+		pipelineRankerUpdateCmd.Flags().String(provider+"-model", "", "Provider model")
+		pipelineRankerUpdateCmd.Flags().String(provider+"-auth-token", "", "Provider authentication token")
+	}
+	pipelineRankerUpdateCmd.Flags().String("reranker-query-template", "", "Reranker query template")
+	pipelineRankerUpdateCmd.Flags().String("reranker-document-template", "", "Reranker document template")
+	pipelineRankerUpdateCmd.Flags().String("decision-state-template", "", "Decision state template")
+	pipelineRankerUpdateCmd.Flags().String("decision-instructions-template", "", "Decision instructions template")
+
+	pipelineFallbackUpdateCmd.Flags().StringArray("recommender", nil, "Ordered fallback reference (repeat for each; empty clears the list)")
+	pipelineReplacementUpdateCmd.Flags().Bool("enable-replacement", false, "Enable replacement recommendations")
+	pipelineReplacementUpdateCmd.Flags().Float64("positive-replacement-decay", 0, "Positive feedback replacement decay")
+	pipelineReplacementUpdateCmd.Flags().Float64("read-replacement-decay", 0, "Read feedback replacement decay")
+
 	PipelineCmd.AddCommand(
 		pipelineGetCmd,
 		pipelineResetCmd,

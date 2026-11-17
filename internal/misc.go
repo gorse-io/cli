@@ -208,6 +208,26 @@ func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
 	return endpoint, apiKey
 }
 
+func printNextPage(cmd *cobra.Command, cursor string, n int) {
+	if cursor == "" {
+		return
+	}
+	quote := func(value string) string {
+		return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+	}
+	parts := []string{cmd.CommandPath(), "-n", fmt.Sprint(n), "--cursor", quote(cursor)}
+	for _, name := range []string{"application", "endpoint"} {
+		if cmd.Flags().Changed(name) {
+			value, _ := cmd.Flags().GetString(name)
+			parts = append(parts, "--"+name, quote(value))
+		}
+	}
+	if cmd.Flags().Changed("api-key") {
+		parts = append(parts, "--api-key", quote("<api-key>"))
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "\nNext page: %s\n", strings.Join(parts, " "))
+}
+
 func newClient(cmd *cobra.Command) *client.AdminClient {
 	endpoint, apiKey := requireEndpointAndKey(cmd)
 	return client.NewAdminClient(endpoint, apiKey)

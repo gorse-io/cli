@@ -1,10 +1,13 @@
 package internal
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	gorse "github.com/gorse-io/gorse-go"
 	"github.com/gorse-io/gorse/storage"
+	"github.com/gorse-io/gorse/storage/data"
 )
 
 func (s *CLITestSuite) TestUserImportExport() {
@@ -13,6 +16,37 @@ func (s *CLITestSuite) TestUserImportExport() {
 	testImportExport[gorse.User](s, "user", `{"UserId":"bulk-user-a","Labels":{"role":"reader"},"Comment":"用户 A"}
 {"UserId":"bulk-user-b","Labels":["writer"],"Comment":"User B"}
 `)
+}
+
+func (s *CLITestSuite) TestUserListPagination() {
+	ctx := s.T().Context()
+	s.Require().NoError(s.master.DataClient.BatchInsertUsers(ctx, []data.User{
+		{UserId: "page-a", Comment: "first"},
+		{UserId: "page-b", Comment: "second"},
+		{UserId: "page-c", Comment: "third"},
+	}))
+	cursor, _, err := s.master.DataClient.GetUsers(ctx, "", 2)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(cursor)
+	out, err := s.Command("user", "list", "-n", "2")
+	s.Require().NoError(err)
+	table, next, found := strings.Cut(out, "\nNext page: ")
+	s.Require().True(found)
+	s.EqualTable([][]string{{"USER-ID", "COMMENT", "LABELS"}, {"page-a", "first", ""}, {"page-b", "second", ""}}, table)
+	s.Equal(fmt.Sprintf("gorse-cli user list -n 2 --cursor '%s'\n", cursor), next)
+
+	out, err = s.Command("user", "list", "-n", "2", "--cursor", cursor)
+	s.Require().NoError(err)
+	s.EqualTable([][]string{{"USER-ID", "COMMENT", "LABELS"}, {"page-c", "third", ""}}, out)
+	for _, flags := range [][]string{nil, {"-n", "0"}, {"-n", "3"}} {
+		out, err = s.Command(append([]string{"user", "list"}, flags...)...)
+		s.Require().NoError(err)
+		s.EqualTable([][]string{{"USER-ID", "COMMENT", "LABELS"}, {"page-a", "first", ""}, {"page-b", "second", ""}, {"page-c", "third", ""}}, out)
+	}
+	s.Require().NoError(s.master.DataClient.Purge())
+	out, err = s.Command("user", "list")
+	s.Require().NoError(err)
+	s.EqualTable([][]string{{"USER-ID", "COMMENT", "LABELS"}}, out)
 }
 
 func (s *CLITestSuite) TestUserUpdate() {
@@ -108,7 +142,8 @@ Labels:
 	}
 	out, err = s.Command("user", "list", "-n", "1")
 	s.Require().NoError(err)
-	s.EqualTable(expected[:2], out)
+	table, _, _ := strings.Cut(out, "\nNext page: ")
+	s.EqualTable(expected[:2], table)
 
 	out, err = s.Command("user", "list")
 	s.Require().NoError(err)
