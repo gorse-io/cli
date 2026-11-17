@@ -17,7 +17,9 @@ package internal
 import (
 	"fmt"
 	"os"
+	"time"
 
+	gorse "github.com/gorse-io/gorse-go"
 	adminclient "github.com/gorse-io/gorse/client"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
@@ -28,6 +30,51 @@ var FeedbackCmd = &cobra.Command{
 	Short: "Manage feedback",
 	Args:  cobra.NoArgs,
 	Run:   func(cmd *cobra.Command, args []string) { _ = cmd.Help() },
+}
+
+var addFeedbackCmd = &cobra.Command{
+	Use:   "add <feedback-type> <user-id> <item-id>",
+	Short: "Add feedback",
+	Args:  cobra.ExactArgs(3),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		feedback := gorse.Feedback{
+			FeedbackType: args[0],
+			UserId:       args[1],
+			ItemId:       args[2],
+			Value:        lo.Must(cmd.Flags().GetFloat64("value")),
+			Timestamp:    time.Now(),
+		}
+		if timestamp := lo.Must(cmd.Flags().GetString("timestamp")); timestamp != "" {
+			var err error
+			feedback.Timestamp, err = time.Parse(time.RFC3339, timestamp)
+			if err != nil {
+				return fmt.Errorf("invalid --timestamp: %w", err)
+			}
+		}
+		result, err := newClient(cmd).InsertFeedback(cmd.Context(), []gorse.Feedback{feedback})
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		printStruct(cmd, result)
+		return nil
+	},
+}
+
+var deleteFeedbackCmd = &cobra.Command{
+	Use:   "delete <feedback-type> <user-id> <item-id>",
+	Short: "Delete feedback",
+	Args:  cobra.ExactArgs(3),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if !lo.Must(cmd.Flags().GetBool("yes")) {
+			return fmt.Errorf("deletion requires confirmation with --yes")
+		}
+		result, err := newClient(cmd).DeleteFeedback(cmd.Context(), args[0], args[1], args[2])
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		printStruct(cmd, result)
+		return nil
+	},
 }
 
 var getFeedbackCmd = &cobra.Command{
@@ -81,4 +128,10 @@ var getFeedbackCmd = &cobra.Command{
 		}
 		printArrayTable(cmd, feedback)
 	},
+}
+
+func init() {
+	addFeedbackCmd.Flags().Float64("value", 1, "Feedback value")
+	addFeedbackCmd.Flags().String("timestamp", "", "Feedback timestamp in RFC3339 format (default: current time)")
+	deleteFeedbackCmd.Flags().Bool("yes", false, "Confirm deletion (required)")
 }

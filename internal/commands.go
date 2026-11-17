@@ -90,7 +90,7 @@ func init() {
 		deleteItemCmd,
 		itemCategoriesCmd,
 	)
-	FeedbackCmd.AddCommand(getFeedbackCmd)
+	FeedbackCmd.AddCommand(getFeedbackCmd, addFeedbackCmd, deleteFeedbackCmd)
 	RecommendCmd.AddCommand(
 		recommendUserCmd,
 		getLatestCmd,
