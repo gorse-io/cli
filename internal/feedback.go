@@ -131,6 +131,13 @@ var getFeedbackCmd = &cobra.Command{
 }
 
 func init() {
+	FeedbackCmd.AddCommand(getFeedbackCmd, addFeedbackCmd, deleteFeedbackCmd)
+
+	getFeedbackCmd.Flags().IntP("n", "n", 0, "Number of returned feedback")
+	getFeedbackCmd.Flags().String("type", "", "Filter by feedback type")
+	getFeedbackCmd.Flags().String("user", "", "Filter by user ID")
+	getFeedbackCmd.Flags().String("item", "", "Filter by item ID")
+
 	addFeedbackCmd.Flags().Float64("value", 1, "Feedback value")
 	addFeedbackCmd.Flags().String("timestamp", "", "Feedback timestamp in RFC3339 format (default: current time)")
 	deleteFeedbackCmd.Flags().Bool("yes", false, "Confirm deletion (required)")
