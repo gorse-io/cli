@@ -3,8 +3,17 @@ package internal
 import (
 	"time"
 
+	gorse "github.com/gorse-io/gorse-go"
 	"github.com/gorse-io/gorse/storage"
 )
+
+func (s *CLITestSuite) TestUserImportExport() {
+	_, err := s.Command("user", "add", "bulk-user-a", "--comment", "old comment")
+	s.Require().NoError(err)
+	testImportExport[gorse.User](s, "user", `{"UserId":"bulk-user-a","Labels":{"role":"reader"},"Comment":"用户 A"}
+{"UserId":"bulk-user-b","Labels":["writer"],"Comment":"User B"}
+`)
+}
 
 func (s *CLITestSuite) TestUserUpdate() {
 	ctx := s.T().Context()

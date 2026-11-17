@@ -3,8 +3,17 @@ package internal
 import (
 	"time"
 
+	"github.com/gorse-io/gorse/server"
 	"github.com/gorse-io/gorse/storage/data"
 )
+
+func (s *CLITestSuite) TestFeedbackImportExport() {
+	_, err := s.Command("feedback", "add", "click", "bulk-user", "bulk-item", "--value", "1", "--timestamp", "2026-01-01T00:00:00Z")
+	s.Require().NoError(err)
+	testImportExport[server.Feedback](s, "feedback", `{"FeedbackType":"click","UserId":"bulk-user","ItemId":"bulk-item","Value":2.5,"Timestamp":"2026-01-02T03:04:05Z","Labels":{"source":"web"},"Comment":"反馈 A"}
+{"FeedbackType":"read","UserId":"bulk-user","ItemId":"bulk-item","Value":0,"Timestamp":"2026-02-03T04:05:06Z","Labels":[],"Comment":"Feedback B"}
+`)
+}
 
 func (s *CLITestSuite) TestFeedback() {
 	ctx := s.T().Context()

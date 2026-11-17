@@ -127,11 +127,32 @@ var listUserCmd = &cobra.Command{
 	},
 }
 
+var importUserCmd = &cobra.Command{
+	Use:   "import [file]",
+	Short: "Import users from JSONL (default: stdin; use - for stdin)",
+	Long:  "Import JSONL records in batches, replacing existing records with the same key. Completed batches are not rolled back on failure.",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return importData(cmd, args, "users")
+	},
+}
+
+var exportUserCmd = &cobra.Command{
+	Use:   "export [file]",
+	Short: "Export users as JSONL (default: stdout; use - for stdout)",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return exportData(cmd, args, "users")
+	},
+}
+
 func init() {
 	UserCmd.AddCommand(
 		getUserCmd,
 		listUserCmd,
 		addUserCmd,
+		importUserCmd,
+		exportUserCmd,
 		updateUserCmd,
 		deleteUserCmd,
 	)
