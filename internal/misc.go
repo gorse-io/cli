@@ -20,8 +20,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
+	gorse "github.com/gorse-io/gorse-go"
 	"github.com/gorse-io/gorse/client"
 	"github.com/spf13/cobra"
 )
@@ -117,6 +119,51 @@ var GetStatsCmd = &cobra.Command{
 		}
 		printStruct(cmd, stats)
 	},
+}
+
+func importData(cmd *cobra.Command, args []string, importFunc func(io.Reader) (gorse.RowAffected, error)) error {
+	input := cmd.InOrStdin()
+	if len(args) > 0 && args[0] != "-" {
+		file, err := os.Open(args[0])
+		if err != nil {
+			return fmt.Errorf("failed to open import file: %w", err)
+		}
+		defer file.Close()
+		input = file
+	}
+	result, err := importFunc(input)
+	if err != nil {
+		return fmt.Errorf("API request failed: %w", err)
+	}
+	printStruct(cmd, result)
+	return nil
+}
+
+func exportData(cmd *cobra.Command, args []string, exportFunc func(io.Writer) error) error {
+	if len(args) == 0 || args[0] == "-" {
+		if err := exportFunc(cmd.OutOrStdout()); err != nil {
+			return fmt.Errorf("failed to export data: %w", err)
+		}
+		return nil
+	}
+	path := args[0]
+	file, err := os.CreateTemp(filepath.Dir(path), ".gorse-export-*")
+	if err != nil {
+		return fmt.Errorf("failed to create export file: %w", err)
+	}
+	defer os.Remove(file.Name())
+	defer file.Close()
+	if err = exportFunc(file); err != nil {
+		return fmt.Errorf("failed to export data: %w", err)
+	}
+	if err = file.Close(); err != nil {
+		return fmt.Errorf("failed to close export file: %w", err)
+	}
+	if err = os.Rename(file.Name(), path); err != nil {
+		return fmt.Errorf("failed to save export file: %w", err)
+	}
+	_, err = fmt.Fprintln(cmd.OutOrStdout(), "Data exported to "+path)
+	return err
 }
 
 func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
