@@ -80,11 +80,15 @@ func init() {
 	CategoryCmd.AddCommand(getCategoriesCmd)
 	UserCmd.AddCommand(
 		getUserCmd,
-		getUsersCmd,
+		listUserCmd,
+		addUserCmd,
+		deleteUserCmd,
 	)
 	ItemCmd.AddCommand(
 		getItemCmd,
-		getItemsCmd,
+		listItemCmd,
+		addItemCmd,
+		deleteItemCmd,
 	)
 	FeedbackCmd.AddCommand(getFeedbackCmd)
 	RecommendCmd.AddCommand(
@@ -95,8 +99,6 @@ func init() {
 		getUserToUserCmd,
 	)
 
-	getUsersCmd.Flags().IntP("n", "n", 0, "Number of returned users")
-	getItemsCmd.Flags().IntP("n", "n", 0, "Number of returned items")
 	getFeedbackCmd.Flags().IntP("n", "n", 0, "Number of returned feedback")
 	getFeedbackCmd.Flags().String("type", "", "Filter by feedback type")
 	getFeedbackCmd.Flags().String("user", "", "Filter by user ID")

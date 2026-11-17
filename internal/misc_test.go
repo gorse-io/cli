@@ -12,6 +12,7 @@ import (
 	"github.com/gorse-io/gorse/config"
 	"github.com/gorse-io/gorse/master"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -73,15 +74,7 @@ func (s *CLITestSuite) SetupSuite() {
 	s.root.PersistentFlags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
 	s.root.PersistentFlags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
 	s.root.PersistentFlags().String("application", "", "Gorse CLI application name")
-	s.root.AddCommand(ApplicationCmd, PipelineCmd)
-}
-
-func (s *CLITestSuite) TearDownTest() {
-	for _, name := range []string{"endpoint", "api-key", "application"} {
-		flag := s.root.PersistentFlags().Lookup(name)
-		s.NoError(flag.Value.Set(flag.DefValue))
-		flag.Changed = false
-	}
+	s.root.AddCommand(ApplicationCmd, PipelineCmd, ItemCmd, UserCmd)
 }
 
 func (s *CLITestSuite) TearDownSuite() {
@@ -93,13 +86,28 @@ func (s *CLITestSuite) TearDownSuite() {
 	}
 }
 
-func (s *CLITestSuite) Command(args ...string) string {
+func (s *CLITestSuite) Command(args ...string) (string, error) {
 	s.T().Helper()
+	commands := []*cobra.Command{s.root}
+	for i := 0; i < len(commands); i++ {
+		cmd := commands[i]
+		commands = append(commands, cmd.Commands()...)
+		for _, flags := range []*pflag.FlagSet{cmd.Flags(), cmd.PersistentFlags()} {
+			flags.VisitAll(func(flag *pflag.Flag) {
+				if value, ok := flag.Value.(pflag.SliceValue); ok {
+					s.Require().NoError(value.Replace(nil))
+				} else {
+					s.Require().NoError(flag.Value.Set(flag.DefValue))
+				}
+				flag.Changed = false
+			})
+		}
+	}
 	s.root.SetArgs(args)
 	var stdout, stderr bytes.Buffer
 	s.root.SetOut(&stdout)
 	s.root.SetErr(&stderr)
-	s.Require().NoError(s.root.Execute())
+	err := s.root.Execute()
 	s.Require().Empty(stderr.String())
-	return stdout.String()
+	return stdout.String(), err
 }
