@@ -16,6 +16,7 @@ import (
 	"github.com/gorse-io/gorse/master"
 	"github.com/gorse-io/gorse/storage/cache"
 	"github.com/gorse-io/gorse/storage/data"
+	"github.com/gorse-io/gorse/storage/vectors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/suite"
@@ -51,6 +52,9 @@ func (s *CLITestSuite) SetupSuite() {
 		{Name: "second", Type: "auto"},
 	}
 	cfg.Recommend.Collaborative.Type = "mf"
+	cfg.Recommend.UserToUser = []config.UserToUserConfig{
+		{Name: "similar", Type: "embedding", Column: "user.Labels.embedding"},
+	}
 	cfg.Recommend.Collaborative.FitEpoch = 10
 	cfg.Recommend.Collaborative.OptimizePeriod = time.Hour
 	s.master = master.NewMaster(cfg, tempDir, true, "")
@@ -79,12 +83,13 @@ func (s *CLITestSuite) SetupSuite() {
 	s.root.PersistentFlags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
 	s.root.PersistentFlags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
 	s.root.PersistentFlags().String("application", "", "Gorse CLI application name")
-	s.root.AddCommand(ApplicationCmd, PipelineCmd, ItemCmd, UserCmd, FeedbackCmd, DumpCmd, RestoreCmd, GetStatsCmd)
+	s.root.AddCommand(ApplicationCmd, PipelineCmd, ItemCmd, UserCmd, FeedbackCmd, DumpCmd, RestoreCmd, GetStatsCmd, RecommendCmd)
 }
 
 func (s *CLITestSuite) TearDownTest() {
 	s.NoError(s.master.DataClient.Purge())
 	s.NoError(s.master.CacheClient.Purge())
+	s.NoError(vectors.Purge(s.T().Context(), s.master.VectorClient))
 }
 
 func (s *CLITestSuite) TearDownSuite() {
