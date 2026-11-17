@@ -133,10 +133,10 @@ var getFeedbackCmd = &cobra.Command{
 var importFeedbackCmd = &cobra.Command{
 	Use:   "import [file]",
 	Short: "Import feedback from JSONL (default: stdin; use - for stdin)",
-	Long:  "Import JSONL records in batches, replacing existing records with the same key. Completed batches are not rolled back on failure.",
+	Long:  "Import JSONL records, replacing existing records with the same key. Completed server-side batches are not rolled back on failure.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return importData(cmd, args, "feedback")
+		return importData(cmd, args, newClient(cmd).ImportFeedback)
 	},
 }
 
@@ -145,7 +145,7 @@ var exportFeedbackCmd = &cobra.Command{
 	Short: "Export feedback as JSONL (default: stdout; use - for stdout)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return exportData(cmd, args, "feedback")
+		return exportData(cmd, args, newClient(cmd).ExportFeedback)
 	},
 }
 

@@ -51,7 +51,8 @@ func (s *CLITestSuite) SetupSuite() {
 		{Name: "first", Type: "users", Column: "item.Labels"},
 		{Name: "second", Type: "auto"},
 	}
-	cfg.Recommend.Collaborative.Type = "mf"
+	// Tests seed recommendations directly; bulk imports must not trigger model training.
+	cfg.Recommend.Collaborative.Type = "none"
 	cfg.Recommend.UserToUser = []config.UserToUserConfig{
 		{Name: "similar", Type: "embedding", Column: "user.Labels.embedding"},
 	}

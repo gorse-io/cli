@@ -15,48 +15,16 @@
 package internal
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	gorse "github.com/gorse-io/gorse-go"
 	"github.com/spf13/cobra"
 )
 
-const importBatchSize = 1000
-
-func bulkRequest(cmd *cobra.Command, method, path string, body io.Reader) (*http.Response, error) {
-	endpoint, apiKey := requireEndpointAndKey(cmd)
-	request, err := http.NewRequestWithContext(cmd.Context(), method, strings.TrimRight(endpoint, "/")+"/api/"+path, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create API request: %w", err)
-	}
-	request.Header.Set("X-API-Key", apiKey)
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	client := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("API request failed: %w", err)
-	}
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		defer response.Body.Close()
-		message, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return nil, fmt.Errorf("API request failed: status=%d body=%s", response.StatusCode, strings.TrimSpace(string(message)))
-	}
-	return response, nil
-}
-
-func importData(cmd *cobra.Command, args []string, resource string) error {
+func importData(cmd *cobra.Command, args []string, importFunc func(io.Reader) (gorse.RowAffected, error)) error {
 	input := cmd.InOrStdin()
 	if len(args) > 0 && args[0] != "-" {
 		file, err := os.Open(args[0])
@@ -66,71 +34,17 @@ func importData(cmd *cobra.Command, args []string, resource string) error {
 		defer file.Close()
 		input = file
 	}
-	decoder := json.NewDecoder(input)
-	batch := make([]json.RawMessage, 0, importBatchSize)
-	imported, read := 0, 0
-	sendBatch := func() error {
-		if len(batch) == 0 {
-			return nil
-		}
-		body, err := json.Marshal(batch)
-		if err != nil {
-			return err
-		}
-		method := http.MethodPost
-		if resource == "feedback" {
-			// PUT preserves labels/comments and overwrites existing feedback.
-			// The server's legacy bulk feedback importer discards labels.
-			method = http.MethodPut
-		}
-		response, err := bulkRequest(cmd, method, resource, bytes.NewReader(body))
-		if err != nil {
-			return err
-		}
-		defer response.Body.Close()
-		var result gorse.RowAffected
-		if err = json.NewDecoder(response.Body).Decode(&result); err != nil {
-			return fmt.Errorf("failed to decode import response: %w", err)
-		}
-		imported += result.RowAffected
-		batch = batch[:0]
-		return nil
+	result, err := importFunc(input)
+	if err != nil {
+		return fmt.Errorf("API request failed: %w", err)
 	}
-	for {
-		var record json.RawMessage
-		err := decoder.Decode(&record)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("import failed after %d records: invalid JSONL record %d: %w", imported, read+1, err)
-		}
-		if len(record) == 0 || record[0] != '{' {
-			return fmt.Errorf("import failed after %d records: JSONL record %d must be an object", imported, read+1)
-		}
-		read++
-		batch = append(batch, record)
-		if len(batch) == importBatchSize {
-			if err = sendBatch(); err != nil {
-				return fmt.Errorf("import failed after %d records: %w", imported, err)
-			}
-		}
-	}
-	if err := sendBatch(); err != nil {
-		return fmt.Errorf("import failed after %d records: %w", imported, err)
-	}
-	printStruct(cmd, gorse.RowAffected{RowAffected: imported})
+	printStruct(cmd, result)
 	return nil
 }
 
-func exportData(cmd *cobra.Command, args []string, resource string) error {
-	response, err := bulkRequest(cmd, http.MethodGet, "bulk/"+resource, nil)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
+func exportData(cmd *cobra.Command, args []string, exportFunc func(io.Writer) error) error {
 	if len(args) == 0 || args[0] == "-" {
-		if _, err = io.Copy(cmd.OutOrStdout(), response.Body); err != nil {
+		if err := exportFunc(cmd.OutOrStdout()); err != nil {
 			return fmt.Errorf("failed to export data: %w", err)
 		}
 		return nil
@@ -142,7 +56,7 @@ func exportData(cmd *cobra.Command, args []string, resource string) error {
 	}
 	defer os.Remove(file.Name())
 	defer file.Close()
-	if _, err = io.Copy(file, response.Body); err != nil {
+	if err = exportFunc(file); err != nil {
 		return fmt.Errorf("failed to export data: %w", err)
 	}
 	if err = file.Close(); err != nil {

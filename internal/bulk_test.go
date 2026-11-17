@@ -72,17 +72,11 @@ func (s *CLITestSuite) TestImportExportErrors() {
 		s.Empty(out)
 		s.Require().NoError(os.WriteFile(path, []byte("keep existing file"), 0o600))
 		out, err = s.Command(resource, "export", path, "--api-key", "invalid-key")
-		s.ErrorContains(err, "API request failed")
+		s.ErrorContains(err, "status=401")
 		s.Empty(out)
 		content, err := os.ReadFile(path)
 		s.Require().NoError(err)
 		s.Equal("keep existing file", string(content))
-		for _, input := range []string{"invalid", "null", "[]", "42"} {
-			s.root.SetIn(strings.NewReader(input))
-			out, err = s.Command(resource, "import", "-")
-			s.ErrorContains(err, "record 1")
-			s.Empty(out)
-		}
 		s.root.SetIn(strings.NewReader(`{"Labels":true}`))
 		out, err = s.Command(resource, "import")
 		s.ErrorContains(err, "API request failed")
@@ -97,32 +91,44 @@ func (s *CLITestSuite) TestImportExportErrors() {
 }
 
 func (s *CLITestSuite) TestBulkTransport() {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.Equal("transport-key", r.Header.Get("X-API-Key"))
-		switch r.Method {
-		case http.MethodGet:
-			s.Equal("/prefix/api/bulk/users", r.URL.Path)
-			fmt.Fprintln(w, `{"UserId":"transport-user"}`)
-		case http.MethodPost:
-			s.Equal("/prefix/api/users", r.URL.Path)
-			s.Equal("application/json", r.Header.Get("Content-Type"))
-			var records []gorse.User
-			s.NoError(json.NewDecoder(r.Body).Decode(&records))
-			s.Equal([]gorse.User{{UserId: "transport-user"}}, records)
-			fmt.Fprintln(w, `{"RowAffected":1}`)
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	}))
-	defer server.Close()
-	s.root.SetIn(strings.NewReader(`{"UserId":"transport-user"}`))
+	// The CLI forwards input verbatim, even when it is not valid JSONL.
+	input := "not JSONL\x00\n {unfinished"
 	defer s.root.SetIn(nil)
-	out, err := s.Command("user", "import", "--endpoint", server.URL+"/prefix/", "--api-key", "transport-key")
-	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
-	out, err = s.Command("user", "export", "--endpoint", server.URL+"/prefix/", "--api-key", "transport-key")
-	s.Require().NoError(err)
-	s.Equal([]gorse.User{{UserId: "transport-user"}}, decodeJSONL[gorse.User](s.T(), out))
+	for _, resource := range []struct{ command, path string }{
+		{"user", "users"}, {"item", "items"}, {"feedback", "feedback"},
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s.Equal("transport-key", r.Header.Get("X-API-Key"))
+			s.Equal("/prefix/api/bulk/"+resource.path, r.URL.Path)
+			switch r.Method {
+			case http.MethodGet:
+				fmt.Fprint(w, input)
+			case http.MethodPost:
+				file, _, err := r.FormFile("file")
+				if !s.NoError(err) {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				defer file.Close()
+				defer r.MultipartForm.RemoveAll()
+				content, err := io.ReadAll(file)
+				s.NoError(err)
+				s.Equal(input, string(content))
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintln(w, `{"RowAffected":1}`)
+			default:
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
+		}))
+		defer server.Close()
+		s.root.SetIn(strings.NewReader(input))
+		out, err := s.Command(resource.command, "import", "--endpoint", server.URL+"/prefix/", "--api-key", "transport-key")
+		s.Require().NoError(err)
+		s.Contains(out, "RowAffected: 1")
+		out, err = s.Command(resource.command, "export", "--endpoint", server.URL+"/prefix/", "--api-key", "transport-key")
+		s.Require().NoError(err)
+		s.Equal(input, out)
+	}
 }
 
 func (s *CLITestSuite) TestExportInterrupted() {
@@ -145,10 +151,11 @@ func (s *CLITestSuite) TestExportInterrupted() {
 	s.Len(entries, 1)
 }
 
-func (s *CLITestSuite) TestBulkRedirectRefused() {
+func (s *CLITestSuite) TestBulkRedirect() {
 	forwarded := make(chan bool, 1)
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		forwarded <- true
+		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintln(w, `{"RowAffected":1}`)
 	}))
 	defer target.Close()
@@ -159,16 +166,16 @@ func (s *CLITestSuite) TestBulkRedirectRefused() {
 	s.root.SetIn(strings.NewReader(`{"UserId":"redirect-user"}`))
 	defer s.root.SetIn(nil)
 	out, err := s.Command("user", "import", "--endpoint", redirect.URL)
-	s.ErrorContains(err, "status=307")
-	s.Empty(out)
+	s.Require().NoError(err)
+	s.Contains(out, "RowAffected: 1")
 	select {
 	case <-forwarded:
-		s.Fail("must not forward credentials or import records to a redirect target")
 	default:
+		s.Fail("the SDK's default redirect behavior should be retained")
 	}
 }
 
-func (s *CLITestSuite) TestUserImportBatches() {
+func (s *CLITestSuite) TestUserImportLarge() {
 	var input strings.Builder
 	for i := 0; i < 1001; i++ {
 		fmt.Fprintf(&input, "{\"UserId\":\"batch-%04d\",\"Comment\":\"bulk user\"}\n", i)
@@ -181,14 +188,4 @@ func (s *CLITestSuite) TestUserImportBatches() {
 	out, err = s.Command("user", "export")
 	s.Require().NoError(err)
 	s.Len(decodeJSONL[gorse.User](s.T(), out), 1001)
-
-	s.Require().NoError(s.master.DataClient.Purge())
-	s.root.SetIn(strings.NewReader(input.String() + "invalid"))
-	out, err = s.Command("user", "import")
-	s.ErrorContains(err, "after 1000 records")
-	s.ErrorContains(err, "record 1002")
-	s.Empty(out)
-	count, err := s.master.DataClient.CountUsers(s.T().Context())
-	s.Require().NoError(err)
-	s.Equal(1000, count)
 }
