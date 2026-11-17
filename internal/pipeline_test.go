@@ -13,5 +13,7 @@ func (s *CLITestSuite) TestGet() {
 	s.Require().NoError(decoder.Decode(s.master.Config.Recommend))
 	expected, err := json.Marshal(formatConfigMap(fields))
 	s.Require().NoError(err)
-	s.Require().YAMLEq(string(expected), s.Command("pipeline", "get"))
+	out, err := s.Command("pipeline", "get")
+	s.Require().NoError(err)
+	s.Require().YAMLEq(string(expected), out)
 }

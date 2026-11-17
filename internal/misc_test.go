@@ -86,7 +86,7 @@ func (s *CLITestSuite) TearDownSuite() {
 	}
 }
 
-func (s *CLITestSuite) Command(args ...string) string {
+func (s *CLITestSuite) Command(args ...string) (string, error) {
 	s.T().Helper()
 	commands := []*cobra.Command{s.root}
 	for i := 0; i < len(commands); i++ {
@@ -107,7 +107,7 @@ func (s *CLITestSuite) Command(args ...string) string {
 	var stdout, stderr bytes.Buffer
 	s.root.SetOut(&stdout)
 	s.root.SetErr(&stderr)
-	s.Require().NoError(s.root.Execute())
+	err := s.root.Execute()
 	s.Require().Empty(stderr.String())
-	return stdout.String()
+	return stdout.String(), err
 }
