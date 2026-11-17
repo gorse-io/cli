@@ -99,6 +99,13 @@ var listUserCmd = &cobra.Command{
 }
 
 func init() {
+	UserCmd.AddCommand(
+		getUserCmd,
+		listUserCmd,
+		addUserCmd,
+		deleteUserCmd,
+	)
+
 	addUserCmd.Flags().String("labels", "{}", "Labels as JSON")
 	addUserCmd.Flags().String("comment", "", "Comment")
 	deleteUserCmd.Flags().Bool("yes", false, "Confirm deletion (required)")

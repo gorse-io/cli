@@ -15,9 +15,14 @@
 package internal
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
+	"github.com/gorse-io/gorse/client"
 	"github.com/spf13/cobra"
 )
 
@@ -44,4 +49,119 @@ var PsCmd = &cobra.Command{
 		}
 		printTable(cmd.OutOrStdout(), []string{"Tracer", "Name", "Status", "Progress", "Error", "StartTime", "FinishTime"}, rows)
 	},
+}
+
+var DumpCmd = &cobra.Command{
+	Use:   "dump <file>",
+	Short: "Dump all Gorse data as a binary backup",
+	Example: `  # Dump data to a backup file
+  gorse-cli dump backup.bin`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		outputPath := args[0]
+		file, err := os.Create(outputPath)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to create dump file %q: %v\n", outputPath, err)
+			os.Exit(1)
+		}
+		defer file.Close()
+		if err = newClient(cmd).Dump(file); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Data dumped to "+outputPath)
+	},
+}
+
+var RestoreCmd = &cobra.Command{
+	Use:   "restore <file>",
+	Short: "Restore Gorse data from a binary backup",
+	Example: `  # Restore data from a backup file
+ gorse-cli restore backup.bin`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Fprintf(cmd.OutOrStdout(), "Restore data from %s? Existing users, items, feedback, and cache will be overwritten. Confirm [y/N]: ", args[0])
+		input, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to read confirmation: %v\n", err)
+			os.Exit(1)
+		}
+		if !strings.EqualFold(strings.TrimSpace(input), "y") {
+			fmt.Fprintln(cmd.OutOrStdout(), "Restore canceled")
+			return
+		}
+		file, err := os.Open(args[0])
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to open restore file %q: %v\n", args[0], err)
+			os.Exit(1)
+		}
+		defer file.Close()
+		stats, err := newClient(cmd).Restore(file)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Restored %d users, %d items, %d feedback in %s.\n",
+			stats.Users, stats.Items, stats.Feedback, stats.Duration)
+	},
+}
+
+var GetStatsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "Get global statistics",
+	Run: func(cmd *cobra.Command, args []string) {
+		stats, err := newClient(cmd).GetStats()
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
+			os.Exit(1)
+		}
+		printStruct(cmd, stats)
+	},
+}
+
+func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
+	endpoint, apiKey := getEndpointAndKey(cmd)
+	if endpoint == "" || apiKey == "" {
+		switch {
+		case endpoint == "" && apiKey == "":
+			output := cmd.ErrOrStderr()
+			fmt.Fprintln(output, "Error: no Gorse application is selected and no endpoint/API key was provided.")
+			fmt.Fprintln(output)
+			fmt.Fprintln(output, "Create an application:")
+			fmt.Fprintln(output, "  gorse-cli application add dev --endpoint http://localhost:8088")
+			fmt.Fprintln(output, "Or use environment variables:")
+			fmt.Fprintln(output, "  GORSE_ADMIN_ENDPOINT=http://localhost:8088 GORSE_ADMIN_API_KEY=<api-key> "+cmd.CommandPath())
+			fmt.Fprintln(output, "Or pass credentials for this command:")
+			fmt.Fprintln(output, "  "+cmd.CommandPath()+" --endpoint http://localhost:8088 --api-key <api-key>")
+			os.Exit(1)
+		case endpoint == "":
+			output := cmd.ErrOrStderr()
+			fmt.Fprintln(output, "Error: missing Gorse base URL.")
+			fmt.Fprintln(output)
+			fmt.Fprintln(output, "Use a saved application:")
+			fmt.Fprintln(output, "  gorse-cli application use <name>")
+			fmt.Fprintln(output, "Or set an environment variable:")
+			fmt.Fprintln(output, "  GORSE_ADMIN_ENDPOINT=http://localhost:8088 "+cmd.CommandPath())
+			fmt.Fprintln(output, "Or pass an endpoint:")
+			fmt.Fprintln(output, "  "+cmd.CommandPath()+" --endpoint http://localhost:8088")
+			os.Exit(1)
+		case apiKey == "":
+			output := cmd.ErrOrStderr()
+			fmt.Fprintln(output, "Error: missing Gorse admin API key.")
+			fmt.Fprintln(output)
+			fmt.Fprintln(output, "Save it in an application:")
+			fmt.Fprintln(output, "  gorse-cli application add <name> --endpoint http://localhost:8088")
+			fmt.Fprintln(output, "Or set an environment variable:")
+			fmt.Fprintln(output, "  GORSE_ADMIN_API_KEY=<api-key> "+cmd.CommandPath())
+			fmt.Fprintln(output, "Or pass it for this command:")
+			fmt.Fprintln(output, "  "+cmd.CommandPath()+" --api-key <api-key>")
+			os.Exit(1)
+		}
+	}
+	return endpoint, apiKey
+}
+
+func newClient(cmd *cobra.Command) *client.AdminClient {
+	endpoint, apiKey := requireEndpointAndKey(cmd)
+	return client.NewAdminClient(endpoint, apiKey)
 }

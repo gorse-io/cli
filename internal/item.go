@@ -135,6 +135,14 @@ var listItemCmd = &cobra.Command{
 }
 
 func init() {
+	ItemCmd.AddCommand(
+		getItemCmd,
+		listItemCmd,
+		addItemCmd,
+		deleteItemCmd,
+		itemCategoriesCmd,
+	)
+
 	addItemCmd.Flags().String("labels", "{}", "Labels as JSON")
 	addItemCmd.Flags().String("comment", "", "Comment")
 	addItemCmd.Flags().StringArray("category", nil, "Item category, repeatable")

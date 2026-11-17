@@ -280,6 +280,16 @@ func readSecret(prompt string) (string, error) {
 	return strings.TrimSpace(secret), err
 }
 
+func init() {
+	ApplicationCmd.AddCommand(
+		applicationAddCmd,
+		applicationListCmd,
+		applicationUseCmd,
+		applicationDeleteCmd,
+		applicationCurrentCmd,
+	)
+}
+
 var ApplicationCmd = &cobra.Command{
 	Use:   "application",
 	Short: "Manage applications",

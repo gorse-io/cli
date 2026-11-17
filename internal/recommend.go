@@ -126,3 +126,24 @@ var getUserToUserCmd = &cobra.Command{
 		printArrayTable(cmd, recommendations)
 	},
 }
+
+func init() {
+	RecommendCmd.AddCommand(
+		recommendUserCmd,
+		getLatestCmd,
+		getNonPersonalizedCmd,
+		getItemToItemCmd,
+		getUserToUserCmd,
+	)
+
+	getLatestCmd.Flags().IntP("n", "n", 0, "Number of returned records")
+	getLatestCmd.Flags().StringArray("category", nil, "Filter by category, repeatable")
+	getNonPersonalizedCmd.Flags().IntP("n", "n", 0, "Number of returned records")
+	getNonPersonalizedCmd.Flags().StringArray("category", nil, "Filter by category, repeatable")
+	getNonPersonalizedCmd.Flags().String("user-id", "", "Remove read items of a user")
+	recommendUserCmd.Flags().IntP("n", "n", 0, "Number of returned items")
+	recommendUserCmd.Flags().StringArray("category", nil, "Filter by category, repeatable")
+	getItemToItemCmd.Flags().IntP("n", "n", 0, "Number of returned records")
+	getItemToItemCmd.Flags().StringArray("category", nil, "Filter by category, repeatable")
+	getUserToUserCmd.Flags().IntP("n", "n", 0, "Number of returned records")
+}
