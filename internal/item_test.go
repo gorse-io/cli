@@ -1,10 +1,13 @@
 package internal
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gorse-io/gorse/storage"
 	"github.com/gorse-io/gorse/storage/cache"
+	"github.com/gorse-io/gorse/storage/data"
 )
 
 func (s *CLITestSuite) TestCategories() {
@@ -15,6 +18,42 @@ func (s *CLITestSuite) TestCategories() {
 	out, err := s.Command("item", "categories")
 	s.Require().NoError(err)
 	s.EqualTable([][]string{{"INDEX", "VALUE"}, {"0", "news"}, {"1", "tech"}}, out)
+}
+
+func (s *CLITestSuite) TestItemListPagination() {
+	ctx := s.T().Context()
+	timestamp := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	s.Require().NoError(s.master.DataClient.BatchInsertItems(ctx, []data.Item{
+		{ItemId: "page-a", Comment: "first", Timestamp: timestamp},
+		{ItemId: "page-b", Comment: "second", Timestamp: timestamp},
+		{ItemId: "page-c", Comment: "third", Timestamp: timestamp},
+	}))
+	header := []string{"ITEM-ID", "COMMENT", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS"}
+	first := []string{"page-a", "first", "[]", "false", timestamp.Format(time.RFC3339), ""}
+	second := []string{"page-b", "second", "[]", "false", timestamp.Format(time.RFC3339), ""}
+	third := []string{"page-c", "third", "[]", "false", timestamp.Format(time.RFC3339), ""}
+	cursor, _, err := s.master.DataClient.GetItems(ctx, "", 2, nil)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(cursor)
+	out, err := s.Command("item", "list", "-n", "2")
+	s.Require().NoError(err)
+	table, next, found := strings.Cut(out, "\nNext page: ")
+	s.Require().True(found)
+	s.EqualTable([][]string{header, first, second}, table)
+	s.Equal(fmt.Sprintf("gorse-cli item list -n 2 --cursor '%s'\n", cursor), next)
+
+	out, err = s.Command("item", "list", "-n", "2", "--cursor", cursor)
+	s.Require().NoError(err)
+	s.EqualTable([][]string{header, third}, out)
+	for _, flags := range [][]string{nil, {"-n", "0"}, {"-n", "3"}} {
+		out, err = s.Command(append([]string{"item", "list"}, flags...)...)
+		s.Require().NoError(err)
+		s.EqualTable([][]string{header, first, second, third}, out)
+	}
+	s.Require().NoError(s.master.DataClient.Purge())
+	out, err = s.Command("item", "list")
+	s.Require().NoError(err)
+	s.EqualTable([][]string{header}, out)
 }
 
 func (s *CLITestSuite) TestItemUpdate() {
@@ -142,7 +181,8 @@ func (s *CLITestSuite) TestItem() {
 	}
 	out, err = s.Command("item", "list", "-n", "1")
 	s.Require().NoError(err)
-	s.EqualTable(expected[:2], out)
+	table, _, _ := strings.Cut(out, "\nNext page: ")
+	s.EqualTable(expected[:2], table)
 
 	out, err = s.Command("item", "list")
 	s.Require().NoError(err)

@@ -17,6 +17,7 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 
 	gorse "github.com/gorse-io/gorse-go"
@@ -113,17 +114,19 @@ var listUserCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List users",
 	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		n := lo.Must(cmd.Flags().GetInt("n"))
 		if n == 0 {
 			n = 10
 		}
-		users, err := newClient(cmd).GetUsers(cmd.Context(), n, "")
+		cursor := lo.Must(cmd.Flags().GetString("cursor"))
+		users, err := newClient(cmd).GetUsers(cmd.Context(), n, url.QueryEscape(cursor))
 		if err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Error: API request failed: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("API request failed: %w", err)
 		}
 		printArrayTable(cmd, users.Users)
+		printNextPage(cmd, users.Cursor, n)
+		return nil
 	},
 }
 
@@ -142,4 +145,5 @@ func init() {
 	updateUserCmd.Flags().String("comment", "", "Replace comment (empty value clears)")
 	deleteUserCmd.Flags().Bool("yes", false, "Confirm deletion (required)")
 	listUserCmd.Flags().IntP("n", "n", 0, "Number of returned users")
+	listUserCmd.Flags().String("cursor", "", "Cursor for the next page")
 }

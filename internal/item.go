@@ -17,6 +17,7 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -159,10 +160,14 @@ var listItemCmd = &cobra.Command{
 	Use:   "list [query...]",
 	Short: "List or search items",
 	Args:  cobra.ArbitraryArgs,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		n := lo.Must(cmd.Flags().GetInt("n"))
 		if n == 0 {
 			n = 10
+		}
+		cursor := lo.Must(cmd.Flags().GetString("cursor"))
+		if len(args) > 0 && cursor != "" {
+			return fmt.Errorf("--cursor is not supported when searching items")
 		}
 		client := newClient(cmd)
 		var (
@@ -172,13 +177,16 @@ var listItemCmd = &cobra.Command{
 		if len(args) > 0 {
 			items, err = client.SearchItems(cmd.Context(), strings.Join(args, " "), n)
 		} else {
-			items, err = client.GetItems(cmd.Context(), n, "")
+			items, err = client.GetItems(cmd.Context(), n, url.QueryEscape(cursor))
 		}
 		if err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Error: API request failed: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("API request failed: %w", err)
 		}
 		printArrayTable(cmd, items.Items)
+		if len(args) == 0 {
+			printNextPage(cmd, items.Cursor, n)
+		}
+		return nil
 	},
 }
 
@@ -204,4 +212,5 @@ func init() {
 	updateItemCmd.Flags().String("timestamp", "", "Item timestamp in RFC3339 format")
 	deleteItemCmd.Flags().Bool("yes", false, "Confirm deletion (required)")
 	listItemCmd.Flags().IntP("n", "n", 0, "Number of returned items")
+	listItemCmd.Flags().String("cursor", "", "Cursor for the next page (listing only)")
 }
