@@ -31,49 +31,40 @@ var UserCmd = &cobra.Command{
 	Run:   func(cmd *cobra.Command, args []string) { _ = cmd.Help() },
 }
 
-var addUserCmd = func() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "add <user-id>",
-		Short: "Add a user",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			user := gorse.User{UserId: args[0], Comment: lo.Must(cmd.Flags().GetString("comment"))}
-			if err := json.Unmarshal([]byte(lo.Must(cmd.Flags().GetString("labels"))), &user.Labels); err != nil {
-				return fmt.Errorf("invalid --labels: %w", err)
-			}
-			result, err := newClient(cmd).InsertUser(cmd.Context(), user)
-			if err != nil {
-				return fmt.Errorf("API request failed: %w", err)
-			}
-			printStruct(cmd, result)
-			return nil
-		},
-	}
-	cmd.Flags().String("labels", "{}", "Labels as JSON")
-	cmd.Flags().String("comment", "", "Comment")
-	return cmd
-}()
+var addUserCmd = &cobra.Command{
+	Use:   "add <user-id>",
+	Short: "Add a user",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		user := gorse.User{UserId: args[0], Comment: lo.Must(cmd.Flags().GetString("comment"))}
+		if err := json.Unmarshal([]byte(lo.Must(cmd.Flags().GetString("labels"))), &user.Labels); err != nil {
+			return fmt.Errorf("invalid --labels: %w", err)
+		}
+		result, err := newClient(cmd).InsertUser(cmd.Context(), user)
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		printStruct(cmd, result)
+		return nil
+	},
+}
 
-var deleteUserCmd = func() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "delete <user-id>",
-		Short: "Delete a user",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if !lo.Must(cmd.Flags().GetBool("yes")) {
-				return fmt.Errorf("deletion requires confirmation with --yes")
-			}
-			result, err := newClient(cmd).DeleteUser(cmd.Context(), args[0])
-			if err != nil {
-				return fmt.Errorf("API request failed: %w", err)
-			}
-			printStruct(cmd, result)
-			return nil
-		},
-	}
-	cmd.Flags().Bool("yes", false, "Confirm deletion (required)")
-	return cmd
-}()
+var deleteUserCmd = &cobra.Command{
+	Use:   "delete <user-id>",
+	Short: "Delete a user",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if !lo.Must(cmd.Flags().GetBool("yes")) {
+			return fmt.Errorf("deletion requires confirmation with --yes")
+		}
+		result, err := newClient(cmd).DeleteUser(cmd.Context(), args[0])
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		printStruct(cmd, result)
+		return nil
+	},
+}
 
 var getUserCmd = &cobra.Command{
 	Use:   "get <user-id>",
@@ -105,4 +96,11 @@ var listUserCmd = &cobra.Command{
 		}
 		printArrayTable(cmd, users.Users)
 	},
+}
+
+func init() {
+	addUserCmd.Flags().String("labels", "{}", "Labels as JSON")
+	addUserCmd.Flags().String("comment", "", "Comment")
+	deleteUserCmd.Flags().Bool("yes", false, "Confirm deletion (required)")
+	listUserCmd.Flags().IntP("n", "n", 0, "Number of returned users")
 }

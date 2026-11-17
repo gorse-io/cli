@@ -99,8 +99,6 @@ func init() {
 		getUserToUserCmd,
 	)
 
-	listUserCmd.Flags().IntP("n", "n", 0, "Number of returned users")
-	listItemCmd.Flags().IntP("n", "n", 0, "Number of returned items")
 	getFeedbackCmd.Flags().IntP("n", "n", 0, "Number of returned feedback")
 	getFeedbackCmd.Flags().String("type", "", "Filter by feedback type")
 	getFeedbackCmd.Flags().String("user", "", "Filter by user ID")
