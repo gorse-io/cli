@@ -12,6 +12,7 @@ import (
 	"github.com/gorse-io/gorse/config"
 	"github.com/gorse-io/gorse/master"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -76,14 +77,6 @@ func (s *CLITestSuite) SetupSuite() {
 	s.root.AddCommand(ApplicationCmd, PipelineCmd, ItemCmd, UserCmd)
 }
 
-func (s *CLITestSuite) TearDownTest() {
-	for _, name := range []string{"endpoint", "api-key", "application"} {
-		flag := s.root.PersistentFlags().Lookup(name)
-		s.NoError(flag.Value.Set(flag.DefValue))
-		flag.Changed = false
-	}
-}
-
 func (s *CLITestSuite) TearDownSuite() {
 	s.master.Shutdown()
 	select {
@@ -95,6 +88,21 @@ func (s *CLITestSuite) TearDownSuite() {
 
 func (s *CLITestSuite) Command(args ...string) string {
 	s.T().Helper()
+	commands := []*cobra.Command{s.root}
+	for i := 0; i < len(commands); i++ {
+		cmd := commands[i]
+		commands = append(commands, cmd.Commands()...)
+		for _, flags := range []*pflag.FlagSet{cmd.Flags(), cmd.PersistentFlags()} {
+			flags.VisitAll(func(flag *pflag.Flag) {
+				if value, ok := flag.Value.(pflag.SliceValue); ok {
+					s.Require().NoError(value.Replace(nil))
+				} else {
+					s.Require().NoError(flag.Value.Set(flag.DefValue))
+				}
+				flag.Changed = false
+			})
+		}
+	}
 	s.root.SetArgs(args)
 	var stdout, stderr bytes.Buffer
 	s.root.SetOut(&stdout)
