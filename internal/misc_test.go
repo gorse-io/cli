@@ -76,7 +76,12 @@ func (s *CLITestSuite) SetupSuite() {
 	s.root.PersistentFlags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
 	s.root.PersistentFlags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
 	s.root.PersistentFlags().String("application", "", "Gorse CLI application name")
-	s.root.AddCommand(ApplicationCmd, PipelineCmd, ItemCmd, UserCmd)
+	s.root.AddCommand(ApplicationCmd, PipelineCmd, ItemCmd, UserCmd, FeedbackCmd)
+}
+
+func (s *CLITestSuite) TearDownTest() {
+	s.NoError(s.master.DataClient.Purge())
+	s.NoError(s.master.CacheClient.Purge())
 }
 
 func (s *CLITestSuite) TearDownSuite() {

@@ -1,0 +1,87 @@
+package internal
+
+import (
+	"time"
+
+	"github.com/gorse-io/gorse/storage/data"
+)
+
+func (s *CLITestSuite) TestFeedback() {
+	ctx := s.T().Context()
+	s.Require().NoError(s.master.DataClient.BatchInsertUsers(ctx, []data.User{{UserId: "feedback-user"}}))
+	s.Require().NoError(s.master.DataClient.BatchInsertItems(ctx, []data.Item{{ItemId: "feedback-item"}}))
+
+	out, err := s.Command("feedback", "add", "click", "feedback-user", "feedback-item",
+		"--value", "2.5", "--timestamp", "2026-01-02T03:04:05Z")
+	s.Require().NoError(err)
+	s.Contains(out, "RowAffected: 1")
+	records, err := s.master.DataClient.GetUserItemFeedback(ctx, "feedback-user", "feedback-item", "click")
+	s.Require().NoError(err)
+	s.Require().Len(records, 1)
+	click := records[0]
+	s.Equal(2.5, click.Value)
+	s.Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), click.Timestamp)
+
+	before := time.Now().Add(-time.Second)
+	out, err = s.Command("feedback", "add", "view", "feedback-user", "feedback-item")
+	s.Require().NoError(err)
+	s.Contains(out, "RowAffected: 1")
+	records, err = s.master.DataClient.GetUserItemFeedback(ctx, "feedback-user", "feedback-item", "view")
+	s.Require().NoError(err)
+	s.Require().Len(records, 1)
+	view := records[0]
+	s.Equal(1.0, view.Value)
+	s.True(view.Timestamp.After(before))
+	s.False(view.Timestamp.After(time.Now()))
+	_, err = s.Command("feedback", "delete", "view", "feedback-user", "feedback-item", "--yes")
+	s.Require().NoError(err)
+
+	_, err = s.Command("feedback", "add", "read", "feedback-user", "feedback-item", "--timestamp", "2026-02-03T04:05:06Z")
+	s.Require().NoError(err)
+	records, err = s.master.DataClient.GetUserItemFeedback(ctx, "feedback-user", "feedback-item", "read")
+	s.Require().NoError(err)
+	s.Require().Len(records, 1)
+	read := records[0]
+	s.Equal(1.0, read.Value)
+
+	header := []string{"FEEDBACK-TYPE", "USER-ID", "ITEM-ID", "VALUE", "TIMESTAMP", "COMMENT", "UPDATED", "LABELS"}
+	clickRow := []string{"click", "feedback-user", "feedback-item", "2.5", "2026-01-02T03:04:05Z", "", click.Updated.Format(time.RFC3339), ""}
+	readRow := []string{"read", "feedback-user", "feedback-item", "1", read.Timestamp.Format(time.RFC3339), "", read.Updated.Format(time.RFC3339), ""}
+	for _, flags := range [][]string{
+		nil,
+		{"--user", "feedback-user"},
+		{"--item", "feedback-item"},
+		{"--user", "feedback-user", "--item", "feedback-item"},
+	} {
+		out, err = s.Command(append([]string{"feedback", "list"}, flags...)...)
+		s.Require().NoError(err)
+		s.EqualTable([][]string{header, readRow, clickRow}, out)
+		out, err = s.Command(append(append([]string{"feedback", "list", "--type", "click"}, flags...), "-n", "1")...)
+		s.Require().NoError(err)
+		s.EqualTable([][]string{header, clickRow}, out)
+	}
+	out, err = s.Command("feedback", "list", "--user", "feedback-user", "-n", "1")
+	s.Require().NoError(err)
+	s.EqualTable([][]string{header, readRow}, out)
+
+	_, err = s.Command("feedback", "add", "click", "feedback-user", "feedback-item", "--timestamp", "invalid")
+	s.ErrorContains(err, "invalid --timestamp")
+	for _, action := range []string{"add", "delete"} {
+		_, err = s.Command("feedback", action)
+		s.ErrorContains(err, "accepts 3 arg(s)")
+	}
+	for _, flags := range [][]string{nil, {"--yes=false"}} {
+		_, err = s.Command(append([]string{"feedback", "delete", "click", "feedback-user", "feedback-item"}, flags...)...)
+		s.ErrorContains(err, "--yes")
+		records, err = s.master.DataClient.GetUserItemFeedback(ctx, "feedback-user", "feedback-item")
+		s.Require().NoError(err)
+		s.Len(records, 2)
+	}
+	out, err = s.Command("feedback", "delete", "click", "feedback-user", "feedback-item", "--yes")
+	s.Require().NoError(err)
+	s.Contains(out, "RowAffected: 1")
+	records, err = s.master.DataClient.GetUserItemFeedback(ctx, "feedback-user", "feedback-item")
+	s.Require().NoError(err)
+	s.Require().Len(records, 1)
+	s.Equal("read", records[0].FeedbackType)
+}
