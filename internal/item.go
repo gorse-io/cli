@@ -190,11 +190,32 @@ var listItemCmd = &cobra.Command{
 	},
 }
 
+var importItemCmd = &cobra.Command{
+	Use:   "import [file]",
+	Short: "Import items from JSONL (default: stdin; use - for stdin)",
+	Long:  "Import JSONL records, replacing existing records with the same key. Completed server-side batches are not rolled back on failure.",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return importData(cmd, args, newClient(cmd).ImportItems)
+	},
+}
+
+var exportItemCmd = &cobra.Command{
+	Use:   "export [file]",
+	Short: "Export items as JSONL (default: stdout; use - for stdout)",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return exportData(cmd, args, newClient(cmd).ExportItems)
+	},
+}
+
 func init() {
 	ItemCmd.AddCommand(
 		getItemCmd,
 		listItemCmd,
 		addItemCmd,
+		importItemCmd,
+		exportItemCmd,
 		updateItemCmd,
 		deleteItemCmd,
 		itemCategoriesCmd,

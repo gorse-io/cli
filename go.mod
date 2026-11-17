@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/go-viper/mapstructure/v2 v2.5.0
-	github.com/gorse-io/gorse v0.5.10-0.20261018142309-d3186be36756
+	github.com/gorse-io/gorse v0.6.0-alpha.1.0.20261117082459-014b60d9f088
 	github.com/gorse-io/gorse-go v0.5.0-alpha.3.0.20260613082921-062d740c10a2
 	github.com/samber/lo v1.53.0
 	github.com/spf13/cobra v1.10.2

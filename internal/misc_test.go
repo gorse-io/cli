@@ -2,7 +2,9 @@ package internal
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +21,7 @@ import (
 	"github.com/gorse-io/gorse/storage/vectors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -27,6 +30,54 @@ type CLITestSuite struct {
 	root   *cobra.Command
 	master *master.Master
 	done   chan struct{}
+}
+
+func decodeJSONL[T any](t *testing.T, input string) []T {
+	t.Helper()
+	decoder := json.NewDecoder(strings.NewReader(input))
+	var records []T
+	for {
+		var record T
+		err := decoder.Decode(&record)
+		if err == io.EOF {
+			return records
+		}
+		require.NoError(t, err)
+		records = append(records, record)
+	}
+}
+
+func testImportExport[T any](s *CLITestSuite, resource, input string) {
+	s.T().Helper()
+	expected := decodeJSONL[T](s.T(), input)
+	dir := s.T().TempDir()
+	inputPath := filepath.Join(dir, "import data.jsonl")
+	outputPath := filepath.Join(dir, "export data.jsonl")
+	s.Require().NoError(os.WriteFile(inputPath, []byte(input), 0o600))
+	out, err := s.Command(resource, "import", inputPath)
+	s.Require().NoError(err)
+	s.Contains(out, "RowAffected: 2")
+	out, err = s.Command(resource, "export", outputPath)
+	s.Require().NoError(err)
+	s.Contains(out, "Data exported to "+outputPath)
+	content, err := os.ReadFile(outputPath)
+	s.Require().NoError(err)
+	s.ElementsMatch(expected, decodeJSONL[T](s.T(), string(content)))
+
+	defer s.root.SetIn(nil)
+	for _, flags := range [][]string{{"-"}, nil} {
+		s.Require().NoError(s.master.DataClient.Purge())
+		out, err = s.Command(resource, "export")
+		s.Require().NoError(err)
+		s.Empty(out)
+		s.root.SetIn(strings.NewReader(string(content)))
+		out, err = s.Command(append([]string{resource, "import"}, flags...)...)
+		s.Require().NoError(err)
+		s.Contains(out, "RowAffected: 2")
+		out, err = s.Command(append([]string{resource, "export"}, flags...)...)
+		s.Require().NoError(err)
+		s.ElementsMatch(expected, decodeJSONL[T](s.T(), out))
+	}
 }
 
 func TestCLI(t *testing.T) {
@@ -51,7 +102,8 @@ func (s *CLITestSuite) SetupSuite() {
 		{Name: "first", Type: "users", Column: "item.Labels"},
 		{Name: "second", Type: "auto"},
 	}
-	cfg.Recommend.Collaborative.Type = "mf"
+	// Tests seed recommendations directly; bulk imports must not trigger model training.
+	cfg.Recommend.Collaborative.Type = "none"
 	cfg.Recommend.UserToUser = []config.UserToUserConfig{
 		{Name: "similar", Type: "embedding", Column: "user.Labels.embedding"},
 	}

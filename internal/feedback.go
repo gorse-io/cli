@@ -130,8 +130,27 @@ var getFeedbackCmd = &cobra.Command{
 	},
 }
 
+var importFeedbackCmd = &cobra.Command{
+	Use:   "import [file]",
+	Short: "Import feedback from JSONL (default: stdin; use - for stdin)",
+	Long:  "Import JSONL records, replacing existing records with the same key. Completed server-side batches are not rolled back on failure.",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return importData(cmd, args, newClient(cmd).ImportFeedback)
+	},
+}
+
+var exportFeedbackCmd = &cobra.Command{
+	Use:   "export [file]",
+	Short: "Export feedback as JSONL (default: stdout; use - for stdout)",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return exportData(cmd, args, newClient(cmd).ExportFeedback)
+	},
+}
+
 func init() {
-	FeedbackCmd.AddCommand(getFeedbackCmd, addFeedbackCmd, deleteFeedbackCmd)
+	FeedbackCmd.AddCommand(getFeedbackCmd, addFeedbackCmd, deleteFeedbackCmd, importFeedbackCmd, exportFeedbackCmd)
 
 	getFeedbackCmd.Flags().IntP("n", "n", 0, "Number of returned feedback")
 	getFeedbackCmd.Flags().String("type", "", "Filter by feedback type")

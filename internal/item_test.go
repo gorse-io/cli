@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	gorse "github.com/gorse-io/gorse-go"
 	"github.com/gorse-io/gorse/storage"
 	"github.com/gorse-io/gorse/storage/cache"
 	"github.com/gorse-io/gorse/storage/data"
@@ -18,6 +19,14 @@ func (s *CLITestSuite) TestCategories() {
 	out, err := s.Command("item", "categories")
 	s.Require().NoError(err)
 	s.EqualTable([][]string{{"INDEX", "VALUE"}, {"0", "news"}, {"1", "tech"}}, out)
+}
+
+func (s *CLITestSuite) TestItemImportExport() {
+	_, err := s.Command("item", "add", "bulk-item-a", "--comment", "old comment")
+	s.Require().NoError(err)
+	testImportExport[gorse.Item](s, "item", `{"ItemId":"bulk-item-a","IsHidden":true,"Categories":["news","tech"],"Timestamp":"2026-01-02T03:04:05Z","Labels":{"embedding":[0.1,0.2],"genre":"science"},"Comment":"物品 A"}
+{"ItemId":"bulk-item-b","IsHidden":false,"Categories":[],"Timestamp":"2026-02-03T04:05:06Z","Labels":{},"Comment":"Item B"}
+`)
 }
 
 func (s *CLITestSuite) TestItemListPagination() {
