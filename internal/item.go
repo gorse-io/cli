@@ -79,6 +79,20 @@ var deleteItemCmd = &cobra.Command{
 	},
 }
 
+var itemCategoriesCmd = &cobra.Command{
+	Use:   "categories",
+	Short: "List item categories",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		categories, err := newClient(cmd).GetCategories()
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
+			os.Exit(1)
+		}
+		printArrayTable(cmd, categories)
+	},
+}
+
 var getItemCmd = &cobra.Command{
 	Use:   "get <item-id>",
 	Short: "Get item details",

@@ -29,7 +29,6 @@ func main() {
 		internal.ItemCmd,
 		internal.UserCmd,
 		internal.FeedbackCmd,
-		internal.CategoryCmd,
 		internal.GetStatsCmd,
 		internal.RecommendCmd,
 		internal.PipelineCmd,
