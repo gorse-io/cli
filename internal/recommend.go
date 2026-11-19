@@ -140,7 +140,7 @@ func printScoredItems(output io.Writer, items []client.ScoredItem) {
 	table := tabwriter.NewWriter(output, 0, 8, 2, ' ', 0)
 	fmt.Fprintln(table, "ITEM-ID\tCATEGORIES\tIS-HIDDEN\tTIMESTAMP\tLABELS\tCOMMENT\tSCORE")
 	for _, item := range items {
-		fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\t%v\n",
 			item.ItemId, item.Categories, item.IsHidden,
 			item.Timestamp, formatInlineJSON(item.Labels), item.Comment, item.Score)
 	}

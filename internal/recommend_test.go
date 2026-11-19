@@ -29,8 +29,8 @@ func (s *CLITestSuite) TestRecommendItemToItem() {
 	}))
 	s.Require().NoError(s.master.VectorClient.Optimize(ctx, collection))
 	header := []string{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT", "SCORE"}
-	first := []string{"item-a", `["news"]`, "false", "2026-01-01T00:00:00Z", "", "close item", "1"}
-	second := []string{"item-b", `["tech"]`, "false", "2026-01-01T00:00:00Z", "", "other item", "0.5"}
+	first := []string{"item-a", "[news]", "false", timestamp.String(), "null", "close item", "1"}
+	second := []string{"item-b", "[tech]", "false", timestamp.String(), "null", "other item", "0.5"}
 	out, err := s.Command("recommend", "item-to-item", "second", "source", "-n", "1")
 	s.Require().NoError(err)
 	s.EqualTable([][]string{
@@ -104,16 +104,16 @@ func (s *CLITestSuite) TestRecommend() {
 	for i := 1; i <= 13; i++ {
 		timestamp := time.Date(2026, 1, i, 0, 0, 0, 0, time.UTC)
 		categories := []string{"news"}
-		categoryCell := `["news"]`
+		categoryCell := "[news]"
 		if i%2 == 0 {
 			categories = append(categories, "tech")
-			categoryCell = `["news","tech"]`
+			categoryCell = "[news tech]"
 		}
 		item := data.Item{ItemId: fmt.Sprintf("item-%02d", i), Comment: fmt.Sprintf("Recommended item %d", i),
 			Categories: categories, IsHidden: i == 13, Timestamp: timestamp, Labels: map[string]any{"group": "test"}}
 		items = append(items, item)
-		rows[i] = []string{item.ItemId, categoryCell, "false", timestamp.Format(time.RFC3339),
-			`{"group":"test"}`, item.Comment, strconv.FormatInt(timestamp.Unix(), 10)}
+		rows[i] = []string{item.ItemId, categoryCell, "false", timestamp.String(),
+			`{"group":"test"}`, item.Comment, strconv.FormatFloat(float64(timestamp.Unix()), 'g', -1, 64)}
 	}
 	s.Require().NoError(s.master.DataClient.BatchInsertItems(ctx, items))
 	// The newest visible item has already been read and must not be recommended.

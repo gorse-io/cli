@@ -83,9 +83,9 @@ func (s *CLITestSuite) TestItemPagination() {
 		{ItemId: "page-c", Comment: "third", Timestamp: timestamp},
 	}))
 	header := []string{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT"}
-	first := []string{"page-a", "[]", "false", timestamp.Format(time.RFC3339), "", "first"}
-	second := []string{"page-b", "[]", "false", timestamp.Format(time.RFC3339), "", "second"}
-	third := []string{"page-c", "[]", "false", timestamp.Format(time.RFC3339), "", "third"}
+	first := []string{"page-a", "[]", "false", timestamp.String(), "null", "first"}
+	second := []string{"page-b", "[]", "false", timestamp.String(), "null", "second"}
+	third := []string{"page-c", "[]", "false", timestamp.String(), "null", "third"}
 	cursor, _, err := s.master.DataClient.GetItems(ctx, "", 2, nil)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(cursor)
@@ -237,23 +237,23 @@ func (s *CLITestSuite) TestItem() {
 	s.Require().NoError(err)
 	s.Equal(`ItemId:     added-item
 Comment:    new item
-Categories: ["news","tech"]
+Categories: [news tech]
 IsHidden:   true
 Timestamp:  2026-01-02T03:04:05Z
 Labels:
 {
-	"embedding": [
-		0.1,
-		0.2
-	],
-	"genre": "science"
+  "embedding": [
+    0.1,
+    0.2
+  ],
+  "genre": "science"
 }
 `, out)
 
 	expected := [][]string{
 		{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT"},
-		{"added-item", `["news","tech"]`, "true", "2026-01-02T03:04:05Z", `{"embedding":[0.1,0.2],"genre":"science"}`, "new item"},
-		{"minimal-item", "[]", "false", item.Timestamp.Format(time.RFC3339), "{}", ""},
+		{"added-item", "[news tech]", "true", "2026-01-02 03:04:05 +0000 UTC", `{"embedding":[0.1,0.2],"genre":"science"}`, "new item"},
+		{"minimal-item", "[]", "false", item.Timestamp.String(), "{}", ""},
 	}
 	out, err = s.Command("item", "list", "-n", "1")
 	s.Require().NoError(err)

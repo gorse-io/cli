@@ -79,8 +79,8 @@ func (s *CLITestSuite) TestUserPagination() {
 	s.Require().True(found)
 	s.EqualTable([][]string{
 		{"USER-ID", "LABELS", "COMMENT"},
-		{"page-a", "", "first"},
-		{"page-b", "", "second"},
+		{"page-a", "null", "first"},
+		{"page-b", "null", "second"},
 	}, table)
 	s.Equal(fmt.Sprintf("gorse-cli user list -n 2 --cursor %s\n", cursor), next)
 
@@ -88,16 +88,16 @@ func (s *CLITestSuite) TestUserPagination() {
 	s.Require().NoError(err)
 	s.EqualTable([][]string{
 		{"USER-ID", "LABELS", "COMMENT"},
-		{"page-c", "", "third"},
+		{"page-c", "null", "third"},
 	}, out)
 	for _, flags := range [][]string{nil, {"-n", "0"}, {"-n", "3"}} {
 		out, err = s.Command(append([]string{"user", "list"}, flags...)...)
 		s.Require().NoError(err)
 		s.EqualTable([][]string{
 			{"USER-ID", "LABELS", "COMMENT"},
-			{"page-a", "", "first"},
-			{"page-b", "", "second"},
-			{"page-c", "", "third"},
+			{"page-a", "null", "first"},
+			{"page-b", "null", "second"},
+			{"page-c", "null", "third"},
 		}, out)
 	}
 	s.Require().NoError(s.master.DataClient.Purge())
@@ -190,7 +190,7 @@ func (s *CLITestSuite) TestUser() {
 Comment: new user
 Labels:
 {
-	"role": "reader"
+  "role": "reader"
 }
 `, out)
 

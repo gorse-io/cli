@@ -100,8 +100,8 @@ func (s *CLITestSuite) TestFeedback() {
 	s.Equal(1.0, read.Value)
 
 	header := []string{"TIMESTAMP", "FEEDBACK-TYPE", "USER-ID", "ITEM-ID", "VALUE", "LABELS", "UPDATED", "COMMENT"}
-	clickRow := []string{"2026-01-02T03:04:05Z", "click", "feedback-user", "feedback-item", "2.5", "", click.Updated.Format(time.RFC3339), ""}
-	readRow := []string{read.Timestamp.Format(time.RFC3339), "read", "feedback-user", "feedback-item", "1", "", read.Updated.Format(time.RFC3339), ""}
+	clickRow := []string{click.Timestamp.String(), "click", "feedback-user", "feedback-item", "2.5", "null", click.Updated.String(), ""}
+	readRow := []string{read.Timestamp.String(), "read", "feedback-user", "feedback-item", "1", "null", read.Updated.String(), ""}
 	for _, flags := range [][]string{
 		nil,
 		{"--user", "feedback-user"},
