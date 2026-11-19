@@ -16,15 +16,16 @@ package internal
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
+	"text/tabwriter"
 
-	gorse "github.com/gorse-io/gorse-go"
 	"github.com/gorse-io/gorse/client"
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
 
@@ -37,19 +38,18 @@ var PsCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		rows := make([][]string, len(tasks))
-		for i, task := range tasks {
-			rows[i] = []string{
-				formatTableValue(task.Tracer),
-				formatTableValue(task.Name),
-				formatTableValue(task.Status),
-				formatTableValue(formatProgressBar(task.Count, task.Total)),
-				formatTableValue(task.Error),
-				formatTableValue(task.StartTime),
-				formatTableValue(task.FinishTime),
+		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
+		fmt.Fprintln(table, "NAME\tSTATUS\tPROGRESS\tSTART-TIME\tFINISH-TIME")
+		for _, task := range tasks {
+			progress := task.Error
+			if progress == "" {
+				progress = formatProgressBar(task.Count, task.Total)
 			}
+			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n",
+				task.Name, task.Status, progress,
+				formatTimestamp(task.StartTime), formatTimestamp(task.FinishTime))
 		}
-		printTable(cmd.OutOrStdout(), []string{"Tracer", "Name", "Status", "Progress", "Error", "StartTime", "FinishTime"}, rows)
+		lo.Must0(table.Flush())
 	},
 }
 
@@ -117,53 +117,24 @@ var GetStatsCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printStruct(cmd, stats)
+		output := cmd.OutOrStdout()
+		fmt.Fprintf(output, "BinaryVersion:          %s\n", stats.BinaryVersion)
+		fmt.Fprintf(output, "LatestItemsUpdateTime:  %s\n", formatTimestamp(stats.LatestItemsUpdateTime))
+		fmt.Fprintf(output, "MatchingModelFitTime:   %s\n", formatTimestamp(stats.MatchingModelFitTime))
+		fmt.Fprintf(output, "MatchingModelScore:\n%s\n", lo.Must(json.MarshalIndent(stats.MatchingModelScore, "", "\t")))
+		fmt.Fprintf(output, "NumItemLabels:          %d\n", stats.NumItemLabels)
+		fmt.Fprintf(output, "NumItems:               %d\n", stats.NumItems)
+		fmt.Fprintf(output, "NumServers:             %d\n", stats.NumServers)
+		fmt.Fprintf(output, "NumTotalPosFeedback:    %d\n", stats.NumTotalPosFeedback)
+		fmt.Fprintf(output, "NumUserLabels:          %d\n", stats.NumUserLabels)
+		fmt.Fprintf(output, "NumUsers:               %d\n", stats.NumUsers)
+		fmt.Fprintf(output, "NumValidNegFeedback:    %d\n", stats.NumValidNegFeedback)
+		fmt.Fprintf(output, "NumValidPosFeedback:    %d\n", stats.NumValidPosFeedback)
+		fmt.Fprintf(output, "NumWorkers:             %d\n", stats.NumWorkers)
+		fmt.Fprintf(output, "PopularItemsUpdateTime: %s\n", formatTimestamp(stats.PopularItemsUpdateTime))
+		fmt.Fprintf(output, "RankingModelFitTime:    %s\n", formatTimestamp(stats.RankingModelFitTime))
+		fmt.Fprintf(output, "RankingModelScore:\n%s\n", lo.Must(json.MarshalIndent(stats.RankingModelScore, "", "\t")))
 	},
-}
-
-func importData(cmd *cobra.Command, args []string, importFunc func(io.Reader) (gorse.RowAffected, error)) error {
-	input := cmd.InOrStdin()
-	if len(args) > 0 && args[0] != "-" {
-		file, err := os.Open(args[0])
-		if err != nil {
-			return fmt.Errorf("failed to open import file: %w", err)
-		}
-		defer file.Close()
-		input = file
-	}
-	result, err := importFunc(input)
-	if err != nil {
-		return fmt.Errorf("API request failed: %w", err)
-	}
-	printStruct(cmd, result)
-	return nil
-}
-
-func exportData(cmd *cobra.Command, args []string, exportFunc func(io.Writer) error) error {
-	if len(args) == 0 || args[0] == "-" {
-		if err := exportFunc(cmd.OutOrStdout()); err != nil {
-			return fmt.Errorf("failed to export data: %w", err)
-		}
-		return nil
-	}
-	path := args[0]
-	file, err := os.CreateTemp(filepath.Dir(path), ".gorse-export-*")
-	if err != nil {
-		return fmt.Errorf("failed to create export file: %w", err)
-	}
-	defer os.Remove(file.Name())
-	defer file.Close()
-	if err = exportFunc(file); err != nil {
-		return fmt.Errorf("failed to export data: %w", err)
-	}
-	if err = file.Close(); err != nil {
-		return fmt.Errorf("failed to close export file: %w", err)
-	}
-	if err = os.Rename(file.Name(), path); err != nil {
-		return fmt.Errorf("failed to save export file: %w", err)
-	}
-	_, err = fmt.Fprintln(cmd.OutOrStdout(), "Data exported to "+path)
-	return err
 }
 
 func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
@@ -206,26 +177,6 @@ func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
 		}
 	}
 	return endpoint, apiKey
-}
-
-func printNextPage(cmd *cobra.Command, cursor string, n int) {
-	if cursor == "" {
-		return
-	}
-	quote := func(value string) string {
-		return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-	}
-	parts := []string{cmd.CommandPath(), "-n", fmt.Sprint(n), "--cursor", quote(cursor)}
-	for _, name := range []string{"application", "endpoint"} {
-		if cmd.Flags().Changed(name) {
-			value, _ := cmd.Flags().GetString(name)
-			parts = append(parts, "--"+name, quote(value))
-		}
-	}
-	if cmd.Flags().Changed("api-key") {
-		parts = append(parts, "--api-key", quote("<api-key>"))
-	}
-	fmt.Fprintf(cmd.OutOrStdout(), "\nNext page: %s\n", strings.Join(parts, " "))
 }
 
 func newClient(cmd *cobra.Command) *client.AdminClient {

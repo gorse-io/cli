@@ -1,6 +1,23 @@
+// Copyright 2026 gorse Project Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package internal
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gorse-io/gorse/server"
@@ -10,9 +27,38 @@ import (
 func (s *CLITestSuite) TestFeedbackImportExport() {
 	_, err := s.Command("feedback", "add", "click", "bulk-user", "bulk-item", "--value", "1", "--timestamp", "2026-01-01T00:00:00Z")
 	s.Require().NoError(err)
-	testImportExport[server.Feedback](s, "feedback", `{"FeedbackType":"click","UserId":"bulk-user","ItemId":"bulk-item","Value":2.5,"Timestamp":"2026-01-02T03:04:05Z","Labels":{"source":"web"},"Comment":"反馈 A"}
+	input := `{"FeedbackType":"click","UserId":"bulk-user","ItemId":"bulk-item","Value":2.5,"Timestamp":"2026-01-02T03:04:05Z","Labels":{"source":"web"},"Comment":"反馈 A"}
 {"FeedbackType":"read","UserId":"bulk-user","ItemId":"bulk-item","Value":0,"Timestamp":"2026-02-03T04:05:06Z","Labels":[],"Comment":"Feedback B"}
-`)
+`
+	expected := decodeJSONLines[server.Feedback](s.T(), input)
+	dir := s.T().TempDir()
+	inputPath := filepath.Join(dir, "import data.jsonl")
+	outputPath := filepath.Join(dir, "export data.jsonl")
+	s.Require().NoError(os.WriteFile(inputPath, []byte(input), 0o600))
+	out, err := s.Command("feedback", "import", inputPath)
+	s.Require().NoError(err)
+	s.Equal("2 feedback imported\n", out)
+	out, err = s.Command("feedback", "export", outputPath)
+	s.Require().NoError(err)
+	s.Contains(out, "Data exported to "+outputPath)
+	content, err := os.ReadFile(outputPath)
+	s.Require().NoError(err)
+	s.ElementsMatch(expected, decodeJSONLines[server.Feedback](s.T(), string(content)))
+
+	defer s.root.SetIn(nil)
+	for _, flags := range [][]string{{"-"}, nil} {
+		s.Require().NoError(s.master.DataClient.Purge())
+		out, err = s.Command("feedback", "export")
+		s.Require().NoError(err)
+		s.Empty(out)
+		s.root.SetIn(strings.NewReader(string(content)))
+		out, err = s.Command(append([]string{"feedback", "import"}, flags...)...)
+		s.Require().NoError(err)
+		s.Equal("2 feedback imported\n", out)
+		out, err = s.Command(append([]string{"feedback", "export"}, flags...)...)
+		s.Require().NoError(err)
+		s.ElementsMatch(expected, decodeJSONLines[server.Feedback](s.T(), out))
+	}
 }
 
 func (s *CLITestSuite) TestFeedback() {
@@ -23,7 +69,7 @@ func (s *CLITestSuite) TestFeedback() {
 	out, err := s.Command("feedback", "add", "click", "feedback-user", "feedback-item",
 		"--value", "2.5", "--timestamp", "2026-01-02T03:04:05Z")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 feedback added\n", out)
 	records, err := s.master.DataClient.GetUserItemFeedback(ctx, "feedback-user", "feedback-item", "click")
 	s.Require().NoError(err)
 	s.Require().Len(records, 1)
@@ -34,7 +80,7 @@ func (s *CLITestSuite) TestFeedback() {
 	before := time.Now().Add(-time.Second)
 	out, err = s.Command("feedback", "add", "view", "feedback-user", "feedback-item")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 feedback added\n", out)
 	records, err = s.master.DataClient.GetUserItemFeedback(ctx, "feedback-user", "feedback-item", "view")
 	s.Require().NoError(err)
 	s.Require().Len(records, 1)
@@ -53,9 +99,9 @@ func (s *CLITestSuite) TestFeedback() {
 	read := records[0]
 	s.Equal(1.0, read.Value)
 
-	header := []string{"FEEDBACK-TYPE", "USER-ID", "ITEM-ID", "VALUE", "TIMESTAMP", "COMMENT", "UPDATED", "LABELS"}
-	clickRow := []string{"click", "feedback-user", "feedback-item", "2.5", "2026-01-02T03:04:05Z", "", click.Updated.Format(time.RFC3339), ""}
-	readRow := []string{"read", "feedback-user", "feedback-item", "1", read.Timestamp.Format(time.RFC3339), "", read.Updated.Format(time.RFC3339), ""}
+	header := []string{"TIMESTAMP", "FEEDBACK-TYPE", "USER-ID", "ITEM-ID", "VALUE", "LABELS", "UPDATED", "COMMENT"}
+	clickRow := []string{"2026-01-02T03:04:05Z", "click", "feedback-user", "feedback-item", "2.5", "null", click.Updated.Format(time.RFC3339), ""}
+	readRow := []string{"2026-02-03T04:05:06Z", "read", "feedback-user", "feedback-item", "1", "null", read.Updated.Format(time.RFC3339), ""}
 	for _, flags := range [][]string{
 		nil,
 		{"--user", "feedback-user"},
@@ -64,14 +110,24 @@ func (s *CLITestSuite) TestFeedback() {
 	} {
 		out, err = s.Command(append([]string{"feedback", "list"}, flags...)...)
 		s.Require().NoError(err)
-		s.EqualTable([][]string{header, readRow, clickRow}, out)
+		s.EqualTable([][]string{
+			header,
+			readRow,
+			clickRow,
+		}, out)
 		out, err = s.Command(append(append([]string{"feedback", "list", "--type", "click"}, flags...), "-n", "1")...)
 		s.Require().NoError(err)
-		s.EqualTable([][]string{header, clickRow}, out)
+		s.EqualTable([][]string{
+			header,
+			clickRow,
+		}, out)
 	}
 	out, err = s.Command("feedback", "list", "--user", "feedback-user", "-n", "1")
 	s.Require().NoError(err)
-	s.EqualTable([][]string{header, readRow}, out)
+	s.EqualTable([][]string{
+		header,
+		readRow,
+	}, out)
 
 	_, err = s.Command("feedback", "add", "click", "feedback-user", "feedback-item", "--timestamp", "invalid")
 	s.ErrorContains(err, "invalid --timestamp")
@@ -88,9 +144,13 @@ func (s *CLITestSuite) TestFeedback() {
 	}
 	out, err = s.Command("feedback", "delete", "click", "feedback-user", "feedback-item", "--yes")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 feedback deleted\n", out)
 	records, err = s.master.DataClient.GetUserItemFeedback(ctx, "feedback-user", "feedback-item")
 	s.Require().NoError(err)
 	s.Require().Len(records, 1)
 	s.Equal("read", records[0].FeedbackType)
+
+	out, err = s.Command("feedback", "delete", "click", "feedback-user", "feedback-item", "--yes")
+	s.Require().NoError(err)
+	s.Equal("0 feedback deleted\n", out)
 }

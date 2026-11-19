@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"text/tabwriter"
 
 	gorse "github.com/gorse-io/gorse-go"
 	"github.com/samber/lo"
@@ -45,7 +46,7 @@ var addUserCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d user added\n", result.RowAffected)
 		return nil
 	},
 }
@@ -74,7 +75,7 @@ var updateUserCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d user updated\n", result.RowAffected)
 		return nil
 	},
 }
@@ -91,7 +92,7 @@ var deleteUserCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d user deleted\n", result.RowAffected)
 		return nil
 	},
 }
@@ -106,7 +107,10 @@ var getUserCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printStruct(cmd, user)
+		output := cmd.OutOrStdout()
+		fmt.Fprintf(output, "UserId:  %s\n", user.UserId)
+		fmt.Fprintf(output, "Comment: %s\n", user.Comment)
+		fmt.Fprintf(output, "Labels:\n%s\n", formatIndentJSON(user.Labels))
 	},
 }
 
@@ -124,8 +128,15 @@ var listUserCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printArrayTable(cmd, users.Users)
-		printNextPage(cmd, users.Cursor, n)
+		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
+		fmt.Fprintln(table, "USER-ID\tLABELS\tCOMMENT")
+		for _, user := range users.Users {
+			fmt.Fprintf(table, "%s\t%s\t%s\n", user.UserId, formatInlineJSON(user.Labels), user.Comment)
+		}
+		if err := table.Flush(); err != nil {
+			return err
+		}
+		nextPage(cmd, users.Cursor, n)
 		return nil
 	},
 }
@@ -136,7 +147,22 @@ var importUserCmd = &cobra.Command{
 	Long:  "Import JSONL records, replacing existing records with the same key. Completed server-side batches are not rolled back on failure.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return importData(cmd, args, newClient(cmd).ImportUsers)
+		c := newClient(cmd)
+		input := cmd.InOrStdin()
+		if len(args) > 0 && args[0] != "-" {
+			file, err := os.Open(args[0])
+			if err != nil {
+				return fmt.Errorf("failed to open import file: %w", err)
+			}
+			defer file.Close()
+			input = file
+		}
+		result, err := c.ImportUsers(input)
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "%d users imported\n", result.RowAffected)
+		return nil
 	},
 }
 
@@ -145,7 +171,29 @@ var exportUserCmd = &cobra.Command{
 	Short: "Export users as JSONL (default: stdout; use - for stdout)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return exportData(cmd, args, newClient(cmd).ExportUsers)
+		c := newClient(cmd)
+		output := cmd.OutOrStdout()
+		if len(args) == 0 || args[0] == "-" {
+			if err := c.ExportUsers(output); err != nil {
+				return fmt.Errorf("failed to export data: %w", err)
+			}
+			return nil
+		}
+		path := args[0]
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+		if err != nil {
+			return fmt.Errorf("failed to create export file: %w", err)
+		}
+		exportErr := c.ExportUsers(file)
+		closeErr := file.Close()
+		if exportErr != nil {
+			return fmt.Errorf("failed to export data: %w", exportErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("failed to close export file: %w", closeErr)
+		}
+		_, err = fmt.Fprintln(output, "Data exported to "+path)
+		return err
 	},
 }
 

@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	gorse "github.com/gorse-io/gorse-go"
@@ -58,7 +59,7 @@ var addItemCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d item added\n", result.RowAffected)
 		return nil
 	},
 }
@@ -106,7 +107,7 @@ var updateItemCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d item updated\n", result.RowAffected)
 		return nil
 	},
 }
@@ -123,7 +124,7 @@ var deleteItemCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d item deleted\n", result.RowAffected)
 		return nil
 	},
 }
@@ -138,7 +139,9 @@ var itemCategoriesCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printArrayTable(cmd, categories)
+		for _, category := range categories {
+			fmt.Fprintln(cmd.OutOrStdout(), category)
+		}
 	},
 }
 
@@ -152,7 +155,13 @@ var getItemCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printStruct(cmd, item)
+		output := cmd.OutOrStdout()
+		fmt.Fprintf(output, "ItemId:     %s\n", item.ItemId)
+		fmt.Fprintf(output, "Comment:    %s\n", item.Comment)
+		fmt.Fprintf(output, "Categories: %s\n", item.Categories)
+		fmt.Fprintf(output, "IsHidden:   %t\n", item.IsHidden)
+		fmt.Fprintf(output, "Timestamp:  %s\n", formatTimestamp(item.Timestamp))
+		fmt.Fprintf(output, "Labels:\n%s\n", formatIndentJSON(item.Labels))
 	},
 }
 
@@ -182,9 +191,18 @@ var listItemCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printArrayTable(cmd, items.Items)
+		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
+		fmt.Fprintln(table, "ITEM-ID\tCATEGORIES\tIS-HIDDEN\tTIMESTAMP\tLABELS\tCOMMENT")
+		for _, item := range items.Items {
+			fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\n",
+				item.ItemId, item.Categories, item.IsHidden,
+				formatTimestamp(item.Timestamp), formatInlineJSON(item.Labels), item.Comment)
+		}
+		if err := table.Flush(); err != nil {
+			return err
+		}
 		if len(args) == 0 {
-			printNextPage(cmd, items.Cursor, n)
+			nextPage(cmd, items.Cursor, n)
 		}
 		return nil
 	},
@@ -196,7 +214,22 @@ var importItemCmd = &cobra.Command{
 	Long:  "Import JSONL records, replacing existing records with the same key. Completed server-side batches are not rolled back on failure.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return importData(cmd, args, newClient(cmd).ImportItems)
+		c := newClient(cmd)
+		input := cmd.InOrStdin()
+		if len(args) > 0 && args[0] != "-" {
+			file, err := os.Open(args[0])
+			if err != nil {
+				return fmt.Errorf("failed to open import file: %w", err)
+			}
+			defer file.Close()
+			input = file
+		}
+		result, err := c.ImportItems(input)
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "%d items imported\n", result.RowAffected)
+		return nil
 	},
 }
 
@@ -205,7 +238,29 @@ var exportItemCmd = &cobra.Command{
 	Short: "Export items as JSONL (default: stdout; use - for stdout)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return exportData(cmd, args, newClient(cmd).ExportItems)
+		c := newClient(cmd)
+		output := cmd.OutOrStdout()
+		if len(args) == 0 || args[0] == "-" {
+			if err := c.ExportItems(output); err != nil {
+				return fmt.Errorf("failed to export data: %w", err)
+			}
+			return nil
+		}
+		path := args[0]
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+		if err != nil {
+			return fmt.Errorf("failed to create export file: %w", err)
+		}
+		exportErr := c.ExportItems(file)
+		closeErr := file.Close()
+		if exportErr != nil {
+			return fmt.Errorf("failed to export data: %w", exportErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("failed to close export file: %w", closeErr)
+		}
+		_, err = fmt.Fprintln(output, "Data exported to "+path)
+		return err
 	},
 }
 

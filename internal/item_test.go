@@ -1,7 +1,23 @@
+// Copyright 2026 gorse Project Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package internal
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,29 +34,59 @@ func (s *CLITestSuite) TestCategories() {
 	}))
 	out, err := s.Command("item", "categories")
 	s.Require().NoError(err)
-	s.EqualTable([][]string{{"INDEX", "VALUE"}, {"0", "news"}, {"1", "tech"}}, out)
+	s.Equal("news\ntech\n", out)
 }
 
 func (s *CLITestSuite) TestItemImportExport() {
 	_, err := s.Command("item", "add", "bulk-item-a", "--comment", "old comment")
 	s.Require().NoError(err)
-	testImportExport[gorse.Item](s, "item", `{"ItemId":"bulk-item-a","IsHidden":true,"Categories":["news","tech"],"Timestamp":"2026-01-02T03:04:05Z","Labels":{"embedding":[0.1,0.2],"genre":"science"},"Comment":"物品 A"}
+	input := `{"ItemId":"bulk-item-a","IsHidden":true,"Categories":["news","tech"],"Timestamp":"2026-01-02T03:04:05Z","Labels":{"embedding":[0.1,0.2],"genre":"science"},"Comment":"物品 A"}
 {"ItemId":"bulk-item-b","IsHidden":false,"Categories":[],"Timestamp":"2026-02-03T04:05:06Z","Labels":{},"Comment":"Item B"}
-`)
+`
+	expected := decodeJSONLines[gorse.Item](s.T(), input)
+	dir := s.T().TempDir()
+	inputPath := filepath.Join(dir, "import data.jsonl")
+	outputPath := filepath.Join(dir, "export data.jsonl")
+	s.Require().NoError(os.WriteFile(inputPath, []byte(input), 0o600))
+	out, err := s.Command("item", "import", inputPath)
+	s.Require().NoError(err)
+	s.Equal("2 items imported\n", out)
+	out, err = s.Command("item", "export", outputPath)
+	s.Require().NoError(err)
+	s.Contains(out, "Data exported to "+outputPath)
+	content, err := os.ReadFile(outputPath)
+	s.Require().NoError(err)
+	s.ElementsMatch(expected, decodeJSONLines[gorse.Item](s.T(), string(content)))
+
+	defer s.root.SetIn(nil)
+	for _, flags := range [][]string{{"-"}, nil} {
+		s.Require().NoError(s.master.DataClient.Purge())
+		out, err = s.Command("item", "export")
+		s.Require().NoError(err)
+		s.Empty(out)
+		s.root.SetIn(strings.NewReader(string(content)))
+		out, err = s.Command(append([]string{"item", "import"}, flags...)...)
+		s.Require().NoError(err)
+		s.Equal("2 items imported\n", out)
+		out, err = s.Command(append([]string{"item", "export"}, flags...)...)
+		s.Require().NoError(err)
+		s.ElementsMatch(expected, decodeJSONLines[gorse.Item](s.T(), out))
+	}
 }
 
-func (s *CLITestSuite) TestItemListPagination() {
+func (s *CLITestSuite) TestItemPagination() {
 	ctx := s.T().Context()
-	timestamp := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	timestamp := time.Date(2026, 1, 2, 3, 4, 5, 149268406, time.UTC)
 	s.Require().NoError(s.master.DataClient.BatchInsertItems(ctx, []data.Item{
 		{ItemId: "page-a", Comment: "first", Timestamp: timestamp},
 		{ItemId: "page-b", Comment: "second", Timestamp: timestamp},
 		{ItemId: "page-c", Comment: "third", Timestamp: timestamp},
 	}))
-	header := []string{"ITEM-ID", "COMMENT", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS"}
-	first := []string{"page-a", "first", "[]", "false", timestamp.Format(time.RFC3339), ""}
-	second := []string{"page-b", "second", "[]", "false", timestamp.Format(time.RFC3339), ""}
-	third := []string{"page-c", "third", "[]", "false", timestamp.Format(time.RFC3339), ""}
+	header := []string{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT"}
+	const timestampCell = "2026-01-02T03:04:05Z"
+	first := []string{"page-a", "[]", "false", timestampCell, "null", "first"}
+	second := []string{"page-b", "[]", "false", timestampCell, "null", "second"}
+	third := []string{"page-c", "[]", "false", timestampCell, "null", "third"}
 	cursor, _, err := s.master.DataClient.GetItems(ctx, "", 2, nil)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(cursor)
@@ -48,21 +94,35 @@ func (s *CLITestSuite) TestItemListPagination() {
 	s.Require().NoError(err)
 	table, next, found := strings.Cut(out, "\nNext page: ")
 	s.Require().True(found)
-	s.EqualTable([][]string{header, first, second}, table)
-	s.Equal(fmt.Sprintf("gorse-cli item list -n 2 --cursor '%s'\n", cursor), next)
+	s.EqualTable([][]string{
+		header,
+		first,
+		second,
+	}, table)
+	s.Equal(fmt.Sprintf("gorse-cli item list -n 2 --cursor %s\n", cursor), next)
 
 	out, err = s.Command("item", "list", "-n", "2", "--cursor", cursor)
 	s.Require().NoError(err)
-	s.EqualTable([][]string{header, third}, out)
+	s.EqualTable([][]string{
+		header,
+		third,
+	}, out)
 	for _, flags := range [][]string{nil, {"-n", "0"}, {"-n", "3"}} {
 		out, err = s.Command(append([]string{"item", "list"}, flags...)...)
 		s.Require().NoError(err)
-		s.EqualTable([][]string{header, first, second, third}, out)
+		s.EqualTable([][]string{
+			header,
+			first,
+			second,
+			third,
+		}, out)
 	}
 	s.Require().NoError(s.master.DataClient.Purge())
 	out, err = s.Command("item", "list")
 	s.Require().NoError(err)
-	s.EqualTable([][]string{header}, out)
+	s.EqualTable([][]string{
+		header,
+	}, out)
 }
 
 func (s *CLITestSuite) TestItemUpdate() {
@@ -84,7 +144,7 @@ func (s *CLITestSuite) TestItemUpdate() {
 
 	out, err := s.Command("item", "update", "updated-item", "--comment", "updated comment")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 item updated\n", out)
 	expected.Comment = "updated comment"
 	check()
 	_, err = s.Command("item", "update", "updated-item", "--is-hidden=false")
@@ -156,7 +216,7 @@ func (s *CLITestSuite) TestItem() {
 		"--category", "news", "--category", "tech", "--is-hidden",
 		"--timestamp", "2026-01-02T03:04:05Z", "--labels", `{"genre":"science","embedding":[0.1,0.2]}`)
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 item added\n", out)
 	item, err := s.master.DataClient.GetItem(s.T().Context(), "added-item")
 	s.Require().NoError(err)
 	s.Equal("new item", item.Comment)
@@ -167,7 +227,7 @@ func (s *CLITestSuite) TestItem() {
 
 	out, err = s.Command("item", "add", "minimal-item")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 item added\n", out)
 	item, err = s.master.DataClient.GetItem(s.T().Context(), "minimal-item")
 	s.Require().NoError(err)
 	s.Empty(item.Comment)
@@ -176,17 +236,25 @@ func (s *CLITestSuite) TestItem() {
 
 	out, err = s.Command("item", "get", "added-item")
 	s.Require().NoError(err)
-	s.Contains(out, "ItemId: added-item\n")
-	s.Contains(out, "Comment: new item\n")
-	s.Contains(out, `Categories: ["news","tech"]`+"\n")
-	s.Contains(out, "IsHidden: true\n")
-	s.Contains(out, "Timestamp: 2026-01-02T03:04:05Z\n")
-	s.Contains(out, `"genre": "science"`)
+	s.Equal(`ItemId:     added-item
+Comment:    new item
+Categories: [news tech]
+IsHidden:   true
+Timestamp:  2026-01-02T03:04:05Z
+Labels:
+{
+  "embedding": [
+    0.1,
+    0.2
+  ],
+  "genre": "science"
+}
+`, out)
 
 	expected := [][]string{
-		{"ITEM-ID", "COMMENT", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS"},
-		{"added-item", "new item", `["news","tech"]`, "true", "2026-01-02T03:04:05Z", `{"embedding":[0.1,0.2],"genre":"science"}`},
-		{"minimal-item", "", "[]", "false", item.Timestamp.Format(time.RFC3339), "{}"},
+		{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT"},
+		{"added-item", "[news tech]", "true", "2026-01-02T03:04:05Z", `{"embedding":[0.1,0.2],"genre":"science"}`, "new item"},
+		{"minimal-item", "[]", "false", "0001-01-01T00:00:00Z", "{}", ""},
 	}
 	out, err = s.Command("item", "list", "-n", "1")
 	s.Require().NoError(err)
@@ -205,7 +273,7 @@ func (s *CLITestSuite) TestItem() {
 	}
 	out, err = s.Command("item", "delete", "added-item", "--yes")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 item deleted\n", out)
 	_, err = s.master.DataClient.GetItem(s.T().Context(), "added-item")
 	s.ErrorIs(err, storage.ErrNotFound)
 }

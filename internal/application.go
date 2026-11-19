@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"text/tabwriter"
 
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
@@ -342,7 +343,8 @@ var applicationListCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to read the current application from the system keyring: %v\n", err)
 			os.Exit(1)
 		}
-		rows := make([][]string, 0, len(names))
+		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
+		fmt.Fprintln(table, "CURRENT\tNAME\tENDPOINT")
 		for _, name := range names {
 			app, err := applications.Get(name)
 			if err != nil {
@@ -353,9 +355,9 @@ var applicationListCmd = &cobra.Command{
 			if name == current {
 				currentMarker = "*"
 			}
-			rows = append(rows, []string{currentMarker, name, app.Endpoint})
+			fmt.Fprintf(table, "%s\t%s\t%s\n", currentMarker, name, app.Endpoint)
 		}
-		printTable(cmd.OutOrStdout(), []string{"Current", "Name", "Endpoint"}, rows)
+		lo.Must0(table.Flush())
 	},
 }
 
