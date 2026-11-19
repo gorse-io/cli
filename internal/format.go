@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
-	adminclient "github.com/gorse-io/gorse/client"
+	"github.com/gorse-io/gorse/client"
 )
 
-func sortFeedback(feedback []adminclient.Feedback) {
+func sortFeedback(feedback []client.Feedback) {
 	sort.Slice(feedback, func(i, j int) bool {
 		return feedback[i].Timestamp.After(feedback[j].Timestamp)
 	})

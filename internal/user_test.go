@@ -13,7 +13,7 @@ import (
 func (s *CLITestSuite) TestUserImportExport() {
 	_, err := s.Command("user", "add", "bulk-user-a", "--comment", "old comment")
 	s.Require().NoError(err)
-	testImportExport[gorse.User](s, "user", `{"UserId":"bulk-user-a","Labels":{"role":"reader"},"Comment":"用户 A"}
+	testImportExport[gorse.User](s, "user", "2 users imported\n", `{"UserId":"bulk-user-a","Labels":{"role":"reader"},"Comment":"用户 A"}
 {"UserId":"bulk-user-b","Labels":["writer"],"Comment":"User B"}
 `)
 }
@@ -66,7 +66,7 @@ func (s *CLITestSuite) TestUserUpdate() {
 
 	out, err := s.Command("user", "update", "updated-user", "--comment", "updated comment")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 user updated\n", out)
 	expected.Comment = "updated comment"
 	check()
 	_, err = s.Command("user", "update", "updated-user", "--labels", `{"role":"writer"}`)
@@ -112,7 +112,7 @@ func (s *CLITestSuite) TestUserUpdate() {
 func (s *CLITestSuite) TestUser() {
 	out, err := s.Command("user", "add", "added-user", "--comment", "new user", "--labels", `{"role":"reader"}`)
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 user added\n", out)
 	user, err := s.master.DataClient.GetUser(s.T().Context(), "added-user")
 	s.Require().NoError(err)
 	s.Equal("new user", user.Comment)
@@ -120,7 +120,7 @@ func (s *CLITestSuite) TestUser() {
 
 	out, err = s.Command("user", "add", "minimal-user")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 user added\n", out)
 	user, err = s.master.DataClient.GetUser(s.T().Context(), "minimal-user")
 	s.Require().NoError(err)
 	s.Empty(user.Comment)
@@ -157,7 +157,7 @@ Labels:
 	}
 	out, err = s.Command("user", "delete", "added-user", "--yes")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 user deleted\n", out)
 	_, err = s.master.DataClient.GetUser(s.T().Context(), "added-user")
 	s.ErrorIs(err, storage.ErrNotFound)
 }

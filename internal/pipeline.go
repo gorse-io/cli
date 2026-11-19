@@ -78,10 +78,9 @@ var pipelineResetCmd = &cobra.Command{
 			return err
 		}
 		if len(value) > 0 {
-			printStruct(cmd, value)
-		} else {
-			fmt.Fprintln(cmd.OutOrStdout(), "Pipeline reset to defaults.")
+			return marshal(cmd, value)
 		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Pipeline reset to defaults.")
 		return nil
 	},
 }

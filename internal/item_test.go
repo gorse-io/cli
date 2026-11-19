@@ -24,7 +24,7 @@ func (s *CLITestSuite) TestCategories() {
 func (s *CLITestSuite) TestItemImportExport() {
 	_, err := s.Command("item", "add", "bulk-item-a", "--comment", "old comment")
 	s.Require().NoError(err)
-	testImportExport[gorse.Item](s, "item", `{"ItemId":"bulk-item-a","IsHidden":true,"Categories":["news","tech"],"Timestamp":"2026-01-02T03:04:05Z","Labels":{"embedding":[0.1,0.2],"genre":"science"},"Comment":"物品 A"}
+	testImportExport[gorse.Item](s, "item", "2 items imported\n", `{"ItemId":"bulk-item-a","IsHidden":true,"Categories":["news","tech"],"Timestamp":"2026-01-02T03:04:05Z","Labels":{"embedding":[0.1,0.2],"genre":"science"},"Comment":"物品 A"}
 {"ItemId":"bulk-item-b","IsHidden":false,"Categories":[],"Timestamp":"2026-02-03T04:05:06Z","Labels":{},"Comment":"Item B"}
 `)
 }
@@ -84,7 +84,7 @@ func (s *CLITestSuite) TestItemUpdate() {
 
 	out, err := s.Command("item", "update", "updated-item", "--comment", "updated comment")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 item updated\n", out)
 	expected.Comment = "updated comment"
 	check()
 	_, err = s.Command("item", "update", "updated-item", "--is-hidden=false")
@@ -156,7 +156,7 @@ func (s *CLITestSuite) TestItem() {
 		"--category", "news", "--category", "tech", "--is-hidden",
 		"--timestamp", "2026-01-02T03:04:05Z", "--labels", `{"genre":"science","embedding":[0.1,0.2]}`)
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 item added\n", out)
 	item, err := s.master.DataClient.GetItem(s.T().Context(), "added-item")
 	s.Require().NoError(err)
 	s.Equal("new item", item.Comment)
@@ -167,7 +167,7 @@ func (s *CLITestSuite) TestItem() {
 
 	out, err = s.Command("item", "add", "minimal-item")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 item added\n", out)
 	item, err = s.master.DataClient.GetItem(s.T().Context(), "minimal-item")
 	s.Require().NoError(err)
 	s.Empty(item.Comment)
@@ -176,12 +176,20 @@ func (s *CLITestSuite) TestItem() {
 
 	out, err = s.Command("item", "get", "added-item")
 	s.Require().NoError(err)
-	s.Contains(out, "ItemId: added-item\n")
-	s.Contains(out, "Comment: new item\n")
-	s.Contains(out, `Categories: ["news","tech"]`+"\n")
-	s.Contains(out, "IsHidden: true\n")
-	s.Contains(out, "Timestamp: 2026-01-02T03:04:05Z\n")
-	s.Contains(out, `"genre": "science"`)
+	s.Equal(`ItemId:     added-item
+Comment:    new item
+Categories: ["news","tech"]
+IsHidden:   true
+Timestamp:  2026-01-02T03:04:05Z
+Labels:
+{
+	"embedding": [
+		0.1,
+		0.2
+	],
+	"genre": "science"
+}
+`, out)
 
 	expected := [][]string{
 		{"ITEM-ID", "COMMENT", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS"},
@@ -205,7 +213,7 @@ func (s *CLITestSuite) TestItem() {
 	}
 	out, err = s.Command("item", "delete", "added-item", "--yes")
 	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 1")
+	s.Equal("1 item deleted\n", out)
 	_, err = s.master.DataClient.GetItem(s.T().Context(), "added-item")
 	s.ErrorIs(err, storage.ErrNotFound)
 }

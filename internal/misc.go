@@ -16,15 +16,18 @@ package internal
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	gorse "github.com/gorse-io/gorse-go"
 	"github.com/gorse-io/gorse/client"
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
 
@@ -117,11 +120,27 @@ var GetStatsCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printStruct(cmd, stats)
+		output := cmd.OutOrStdout()
+		fmt.Fprintf(output, "BinaryVersion:          %s\n", stats.BinaryVersion)
+		fmt.Fprintf(output, "LatestItemsUpdateTime:  %s\n", stats.LatestItemsUpdateTime.Format(time.RFC3339))
+		fmt.Fprintf(output, "MatchingModelFitTime:   %s\n", stats.MatchingModelFitTime.Format(time.RFC3339))
+		fmt.Fprintf(output, "MatchingModelScore:\n%s\n", lo.Must(json.MarshalIndent(stats.MatchingModelScore, "", "\t")))
+		fmt.Fprintf(output, "NumItemLabels:          %d\n", stats.NumItemLabels)
+		fmt.Fprintf(output, "NumItems:               %d\n", stats.NumItems)
+		fmt.Fprintf(output, "NumServers:             %d\n", stats.NumServers)
+		fmt.Fprintf(output, "NumTotalPosFeedback:    %d\n", stats.NumTotalPosFeedback)
+		fmt.Fprintf(output, "NumUserLabels:          %d\n", stats.NumUserLabels)
+		fmt.Fprintf(output, "NumUsers:               %d\n", stats.NumUsers)
+		fmt.Fprintf(output, "NumValidNegFeedback:    %d\n", stats.NumValidNegFeedback)
+		fmt.Fprintf(output, "NumValidPosFeedback:    %d\n", stats.NumValidPosFeedback)
+		fmt.Fprintf(output, "NumWorkers:             %d\n", stats.NumWorkers)
+		fmt.Fprintf(output, "PopularItemsUpdateTime: %s\n", stats.PopularItemsUpdateTime.Format(time.RFC3339))
+		fmt.Fprintf(output, "RankingModelFitTime:    %s\n", stats.RankingModelFitTime.Format(time.RFC3339))
+		fmt.Fprintf(output, "RankingModelScore:\n%s\n", lo.Must(json.MarshalIndent(stats.RankingModelScore, "", "\t")))
 	},
 }
 
-func importData(cmd *cobra.Command, args []string, importFunc func(io.Reader) (gorse.RowAffected, error)) error {
+func importData(cmd *cobra.Command, args []string, resource string, importFunc func(io.Reader) (gorse.RowAffected, error)) error {
 	input := cmd.InOrStdin()
 	if len(args) > 0 && args[0] != "-" {
 		file, err := os.Open(args[0])
@@ -135,7 +154,7 @@ func importData(cmd *cobra.Command, args []string, importFunc func(io.Reader) (g
 	if err != nil {
 		return fmt.Errorf("API request failed: %w", err)
 	}
-	printStruct(cmd, result)
+	fmt.Fprintf(cmd.OutOrStdout(), "%d %s imported\n", result.RowAffected, resource)
 	return nil
 }
 

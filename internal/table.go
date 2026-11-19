@@ -35,70 +35,6 @@ const (
 	maxTableLabelArrayValues = 3
 )
 
-func printStruct(cmd *cobra.Command, value any) {
-	if object, ok := objectFields(value); ok {
-		printObjectTables(cmd, object)
-		return
-	}
-	printJSONValue(cmd.OutOrStdout(), value)
-}
-
-func printObjectTables(cmd *cobra.Command, object map[string]any) {
-	if _, ok := object["UserId"]; ok {
-		printObjectTable(cmd, object)
-		return
-	}
-	if _, ok := object["ItemId"]; ok {
-		printObjectTable(cmd, object)
-		return
-	}
-	arrayKeys := make([]string, 0)
-	metadata := make(map[string]any)
-	for key, child := range object {
-		if _, ok := sliceValues(child); ok {
-			arrayKeys = append(arrayKeys, key)
-		} else {
-			metadata[key] = child
-		}
-	}
-	sort.Strings(arrayKeys)
-	if len(arrayKeys) > 0 {
-		if len(metadata) > 0 {
-			printObjectTable(cmd, metadata)
-			fmt.Fprintln(cmd.OutOrStdout())
-		}
-		for i, key := range arrayKeys {
-			if i > 0 {
-				fmt.Fprintln(cmd.OutOrStdout())
-			}
-			printArrayTable(cmd, object[key])
-		}
-		return
-	}
-	printObjectTable(cmd, object)
-}
-
-func printObjectTable(cmd *cobra.Command, object map[string]any) {
-	output := cmd.OutOrStdout()
-	if len(object) == 0 {
-		fmt.Fprintln(output, "{}")
-		return
-	}
-
-	keys := orderedObjectKeys(object, "UserId", "ItemId", "Comment", "Categories", "IsHidden", "Timestamp")
-	for _, key := range keys {
-		printObjectField(output, key, object[key])
-	}
-}
-
-func orderedObjectKeys(object map[string]any, priority ...string) []string {
-	keys := make([]string, 0, len(object))
-	for key := range object {
-		keys = append(keys, key)
-	}
-	return orderedKeys(keys, priority...)
-}
-
 func orderedKeys(keys []string, priority ...string) []string {
 	keySet := make(map[string]struct{}, len(keys))
 	for _, key := range keys {
@@ -120,30 +56,6 @@ func orderedKeys(keys []string, priority ...string) []string {
 	}
 	sort.Strings(remaining)
 	return append(ordered, remaining...)
-}
-
-func printObjectField(output io.Writer, key string, value any) {
-	if summary, ok := formatArraySummary(value); ok {
-		fmt.Fprintf(output, "%s: %s\n", key, summary)
-		return
-	}
-	if isObjectValue(value) {
-		fmt.Fprintf(output, "%s:\n%s\n", key, formatPrettyJSON(value))
-		return
-	}
-	if _, ok := sliceValues(value); ok {
-		fmt.Fprintf(output, "%s: %s\n", key, formatTableValue(value))
-		return
-	}
-	fmt.Fprintf(output, "%s: %s\n", key, formatTableValue(value))
-}
-
-func formatPrettyJSON(value any) string {
-	encoded, err := json.MarshalIndent(summarizeLongArrays(value), "", "  ")
-	if err != nil {
-		return formatTableValue(value)
-	}
-	return string(encoded)
 }
 
 func printJSONValue(output io.Writer, value any) {

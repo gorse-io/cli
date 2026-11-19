@@ -45,7 +45,7 @@ var addUserCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d user added\n", result.RowAffected)
 		return nil
 	},
 }
@@ -74,7 +74,7 @@ var updateUserCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d user updated\n", result.RowAffected)
 		return nil
 	},
 }
@@ -91,7 +91,7 @@ var deleteUserCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d user deleted\n", result.RowAffected)
 		return nil
 	},
 }
@@ -106,7 +106,10 @@ var getUserCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printStruct(cmd, user)
+		output := cmd.OutOrStdout()
+		fmt.Fprintf(output, "UserId:  %s\n", user.UserId)
+		fmt.Fprintf(output, "Comment: %s\n", user.Comment)
+		fmt.Fprintf(output, "Labels:\n%s\n", lo.Must(json.MarshalIndent(user.Labels, "", "\t")))
 	},
 }
 
@@ -136,7 +139,7 @@ var importUserCmd = &cobra.Command{
 	Long:  "Import JSONL records, replacing existing records with the same key. Completed server-side batches are not rolled back on failure.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return importData(cmd, args, newClient(cmd).ImportUsers)
+		return importData(cmd, args, "users", newClient(cmd).ImportUsers)
 	},
 }
 

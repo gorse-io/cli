@@ -20,7 +20,7 @@ import (
 	"time"
 
 	gorse "github.com/gorse-io/gorse-go"
-	adminclient "github.com/gorse-io/gorse/client"
+	"github.com/gorse-io/gorse/client"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
@@ -55,7 +55,7 @@ var addFeedbackCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d feedback record added\n", result.RowAffected)
 		return nil
 	},
 }
@@ -72,7 +72,7 @@ var deleteFeedbackCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d feedback record deleted\n", result.RowAffected)
 		return nil
 	},
 }
@@ -89,32 +89,32 @@ var getFeedbackCmd = &cobra.Command{
 		feedbackType := lo.Must(cmd.Flags().GetString("type"))
 		userID := lo.Must(cmd.Flags().GetString("user"))
 		itemID := lo.Must(cmd.Flags().GetString("item"))
-		client := newClient(cmd)
+		c := newClient(cmd)
 		var (
-			feedback []adminclient.Feedback
+			feedback []client.Feedback
 			err      error
 		)
 		switch {
 		case userID != "" && itemID != "" && feedbackType != "":
-			record, requestErr := client.GetTypedUserItemFeedback(feedbackType, userID, itemID)
+			record, requestErr := c.GetTypedUserItemFeedback(feedbackType, userID, itemID)
 			err = requestErr
-			feedback = []adminclient.Feedback{record}
+			feedback = []client.Feedback{record}
 		case userID != "" && itemID != "":
-			feedback, err = client.GetUserItemFeedback(userID, itemID)
+			feedback, err = c.GetUserItemFeedback(userID, itemID)
 		case userID != "" && feedbackType != "":
-			feedback, err = client.GetTypedUserFeedback(userID, feedbackType)
+			feedback, err = c.GetTypedUserFeedback(userID, feedbackType)
 		case userID != "":
-			feedback, err = client.GetUserFeedback(userID)
+			feedback, err = c.GetUserFeedback(userID)
 		case itemID != "" && feedbackType != "":
-			feedback, err = client.GetTypedItemFeedback(itemID, feedbackType)
+			feedback, err = c.GetTypedItemFeedback(itemID, feedbackType)
 		case itemID != "":
-			feedback, err = client.GetItemFeedback(itemID)
+			feedback, err = c.GetItemFeedback(itemID)
 		case feedbackType != "":
-			iterator, requestErr := client.GetTypedFeedback(feedbackType, n)
+			iterator, requestErr := c.GetTypedFeedback(feedbackType, n)
 			err = requestErr
 			feedback = iterator.Feedback
 		default:
-			iterator, requestErr := client.GetFeedback(n)
+			iterator, requestErr := c.GetFeedback(n)
 			err = requestErr
 			feedback = iterator.Feedback
 		}
@@ -136,7 +136,7 @@ var importFeedbackCmd = &cobra.Command{
 	Long:  "Import JSONL records, replacing existing records with the same key. Completed server-side batches are not rolled back on failure.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return importData(cmd, args, newClient(cmd).ImportFeedback)
+		return importData(cmd, args, "feedback records", newClient(cmd).ImportFeedback)
 	},
 }
 

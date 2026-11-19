@@ -58,7 +58,7 @@ var addItemCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d item added\n", result.RowAffected)
 		return nil
 	},
 }
@@ -106,7 +106,7 @@ var updateItemCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d item updated\n", result.RowAffected)
 		return nil
 	},
 }
@@ -123,7 +123,7 @@ var deleteItemCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		printStruct(cmd, result)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d item deleted\n", result.RowAffected)
 		return nil
 	},
 }
@@ -152,7 +152,13 @@ var getItemCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printStruct(cmd, item)
+		output := cmd.OutOrStdout()
+		fmt.Fprintf(output, "ItemId:     %s\n", item.ItemId)
+		fmt.Fprintf(output, "Comment:    %s\n", item.Comment)
+		fmt.Fprintf(output, "Categories: %s\n", lo.Must(json.Marshal(item.Categories)))
+		fmt.Fprintf(output, "IsHidden:   %t\n", item.IsHidden)
+		fmt.Fprintf(output, "Timestamp:  %s\n", item.Timestamp.Format(time.RFC3339))
+		fmt.Fprintf(output, "Labels:\n%s\n", lo.Must(json.MarshalIndent(item.Labels, "", "\t")))
 	},
 }
 
@@ -196,7 +202,7 @@ var importItemCmd = &cobra.Command{
 	Long:  "Import JSONL records, replacing existing records with the same key. Completed server-side batches are not rolled back on failure.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return importData(cmd, args, newClient(cmd).ImportItems)
+		return importData(cmd, args, "items", newClient(cmd).ImportItems)
 	},
 }
 
