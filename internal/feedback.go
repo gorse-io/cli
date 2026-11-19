@@ -17,6 +17,7 @@ package internal
 import (
 	"fmt"
 	"os"
+	"sort"
 	"text/tabwriter"
 	"time"
 
@@ -123,17 +124,19 @@ var getFeedbackCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		sortFeedback(feedback)
+		sort.Slice(feedback, func(i, j int) bool {
+			return feedback[i].Timestamp.After(feedback[j].Timestamp)
+		})
 		if n > 0 && n < len(feedback) {
 			feedback = feedback[:n]
 		}
 		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
 		fmt.Fprintln(table, "TIMESTAMP\tFEEDBACK-TYPE\tUSER-ID\tITEM-ID\tVALUE\tLABELS\tUPDATED\tCOMMENT")
 		for _, record := range feedback {
-			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				record.Timestamp.Format(time.RFC3339), formatTableValue(record.FeedbackType),
-				formatTableValue(record.UserId), formatTableValue(record.ItemId), formatTableValue(record.Value),
-				formatTableLabels(record.Labels), record.Updated.Format(time.RFC3339), formatTableValue(record.Comment))
+			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%v\t%s\t%s\t%s\n",
+				record.Timestamp, record.FeedbackType,
+				record.UserId, record.ItemId, record.Value,
+				formatInlineJSON(record.Labels), record.Updated, record.Comment)
 		}
 		lo.Must0(table.Flush())
 	},

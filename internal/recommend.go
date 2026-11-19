@@ -19,7 +19,6 @@ import (
 	"io"
 	"os"
 	"text/tabwriter"
-	"time"
 
 	"github.com/gorse-io/gorse/client"
 	"github.com/samber/lo"
@@ -130,8 +129,8 @@ var getUserToUserCmd = &cobra.Command{
 		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
 		fmt.Fprintln(table, "USER-ID\tLABELS\tCOMMENT\tSCORE")
 		for _, user := range recommendations {
-			fmt.Fprintf(table, "%s\t%s\t%s\t%s\n",
-				formatTableValue(user.UserId), formatTableLabels(user.Labels), formatTableValue(user.Comment), formatTableValue(user.Score))
+			fmt.Fprintf(table, "%s\t%s\t%s\t%v\n",
+				user.UserId, formatInlineJSON(user.Labels), user.Comment, user.Score)
 		}
 		lo.Must0(table.Flush())
 	},
@@ -142,8 +141,8 @@ func printScoredItems(output io.Writer, items []client.ScoredItem) {
 	fmt.Fprintln(table, "ITEM-ID\tCATEGORIES\tIS-HIDDEN\tTIMESTAMP\tLABELS\tCOMMENT\tSCORE")
 	for _, item := range items {
 		fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\t%s\n",
-			formatTableValue(item.ItemId), formatTableValue(item.Categories), item.IsHidden,
-			item.Timestamp.Format(time.RFC3339), formatTableLabels(item.Labels), formatTableValue(item.Comment), formatTableValue(item.Score))
+			item.ItemId, item.Categories, item.IsHidden,
+			item.Timestamp, formatInlineJSON(item.Labels), item.Comment, item.Score)
 	}
 	lo.Must0(table.Flush())
 }

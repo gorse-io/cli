@@ -110,7 +110,7 @@ var getUserCmd = &cobra.Command{
 		output := cmd.OutOrStdout()
 		fmt.Fprintf(output, "UserId:  %s\n", user.UserId)
 		fmt.Fprintf(output, "Comment: %s\n", user.Comment)
-		fmt.Fprintf(output, "Labels:\n%s\n", lo.Must(json.MarshalIndent(user.Labels, "", "\t")))
+		fmt.Fprintf(output, "Labels:\n%s\n", formatIndentJSON(user.Labels))
 	},
 }
 
@@ -131,7 +131,7 @@ var listUserCmd = &cobra.Command{
 		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
 		fmt.Fprintln(table, "USER-ID\tLABELS\tCOMMENT")
 		for _, user := range users.Users {
-			fmt.Fprintf(table, "%s\t%s\t%s\n", formatTableValue(user.UserId), formatTableLabels(user.Labels), formatTableValue(user.Comment))
+			fmt.Fprintf(table, "%s\t%s\t%s\n", user.UserId, formatInlineJSON(user.Labels), user.Comment)
 		}
 		if err := table.Flush(); err != nil {
 			return err

@@ -43,9 +43,9 @@ var PsCmd = &cobra.Command{
 		fmt.Fprintln(table, "TRACER\tNAME\tSTATUS\tPROGRESS\tERROR\tSTART-TIME\tFINISH-TIME")
 		for _, task := range tasks {
 			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				formatTableValue(task.Tracer), formatTableValue(task.Name), formatTableValue(task.Status),
-				formatProgressBar(task.Count, task.Total), formatTableValue(task.Error),
-				formatTableValue(task.StartTime), formatTableValue(task.FinishTime))
+				task.Tracer, task.Name, task.Status,
+				formatProgressBar(task.Count, task.Total), task.Error,
+				task.StartTime, task.FinishTime)
 		}
 		lo.Must0(table.Flush())
 	},

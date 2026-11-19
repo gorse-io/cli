@@ -158,10 +158,10 @@ var getItemCmd = &cobra.Command{
 		output := cmd.OutOrStdout()
 		fmt.Fprintf(output, "ItemId:     %s\n", item.ItemId)
 		fmt.Fprintf(output, "Comment:    %s\n", item.Comment)
-		fmt.Fprintf(output, "Categories: %s\n", lo.Must(json.Marshal(item.Categories)))
+		fmt.Fprintf(output, "Categories: %s\n", item.Categories)
 		fmt.Fprintf(output, "IsHidden:   %t\n", item.IsHidden)
 		fmt.Fprintf(output, "Timestamp:  %s\n", item.Timestamp.Format(time.RFC3339))
-		fmt.Fprintf(output, "Labels:\n%s\n", lo.Must(json.MarshalIndent(item.Labels, "", "\t")))
+		fmt.Fprintf(output, "Labels:\n%s\n", formatIndentJSON(item.Labels))
 	},
 }
 
@@ -195,8 +195,8 @@ var listItemCmd = &cobra.Command{
 		fmt.Fprintln(table, "ITEM-ID\tCATEGORIES\tIS-HIDDEN\tTIMESTAMP\tLABELS\tCOMMENT")
 		for _, item := range items.Items {
 			fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\n",
-				formatTableValue(item.ItemId), formatTableValue(item.Categories), item.IsHidden,
-				item.Timestamp.Format(time.RFC3339), formatTableLabels(item.Labels), formatTableValue(item.Comment))
+				item.ItemId, item.Categories, item.IsHidden,
+				item.Timestamp, formatInlineJSON(item.Labels), item.Comment)
 		}
 		if err := table.Flush(); err != nil {
 			return err

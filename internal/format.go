@@ -15,28 +15,18 @@
 package internal
 
 import (
-	"encoding/json"
+	"encoding"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"reflect"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/gorse-io/gorse/client"
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
-
-const (
-	maxInlineArrayValues     = 8
-	maxTableLabelArrayValues = 3
-)
-
-func sortFeedback(feedback []client.Feedback) {
-	sort.Slice(feedback, func(i, j int) bool {
-		return feedback[i].Timestamp.After(feedback[j].Timestamp)
-	})
-}
 
 func getConfigValue(configMap map[string]any, names ...string) (string, any, bool) {
 	for _, name := range names {
@@ -97,69 +87,6 @@ func nextPage(cmd *cobra.Command, cursor string, n int) {
 	fmt.Fprintf(cmd.OutOrStdout(), "\nNext page: %s\n", strings.Join(parts, " "))
 }
 
-func summarizeLongArrays(value any) any {
-	return summarizeLongArraysWithLimit(value, maxInlineArrayValues)
-}
-
-func summarizeLongArraysWithLimit(value any, maxValues int) any {
-	if summary, ok := formatArraySummaryWithLimit(value, maxValues); ok {
-		return summary
-	}
-	if array, ok := sliceValues(value); ok {
-		values := make([]any, len(array))
-		for i, element := range array {
-			values[i] = summarizeLongArraysWithLimit(element, maxValues)
-		}
-		return values
-	}
-	if object, ok := objectFields(value); ok {
-		values := make(map[string]any, len(object))
-		for key, element := range object {
-			values[key] = summarizeLongArraysWithLimit(element, maxValues)
-		}
-		return values
-	}
-	return value
-}
-
-func formatArraySummary(value any) (string, bool) {
-	return formatArraySummaryWithLimit(value, maxInlineArrayValues)
-}
-
-func formatArraySummaryWithLimit(value any, maxValues int) (string, bool) {
-	array, ok := sliceValues(value)
-	if maxValues < 1 {
-		maxValues = 1
-	}
-	if !ok || len(array) <= maxValues || !isScalarArray(array) {
-		return "", false
-	}
-	values := make([]string, 0, maxValues)
-	for _, element := range array[:maxValues] {
-		values = append(values, formatSummaryValue(element))
-	}
-	return fmt.Sprintf("[%s, ...] (%d values)", strings.Join(values, ", "), len(array)), true
-}
-
-func isScalarArray(array []any) bool {
-	for _, element := range array {
-		switch indirectInterface(element).(type) {
-		case nil, string, json.Number, bool, float64, float32, int, int64, int32, uint, uint64, uint32, time.Time:
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-func formatSummaryValue(value any) string {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return formatTableValue(value)
-	}
-	return string(encoded)
-}
-
 func formatProgressBar(count, total int) string {
 	const width = 20
 	if count < 0 {
@@ -186,169 +113,75 @@ func formatProgressBar(count, total int) string {
 		percent)
 }
 
-func formatTableLabels(value any) string {
-	if _, ok := sliceValues(value); ok || isObjectValue(value) {
-		encoded, err := json.Marshal(summarizeLongArraysWithLimit(value, maxTableLabelArrayValues))
+func formatIndentJSON(value any) string {
+	return formatJSON(value, jsontext.WithIndent("  "))
+}
+
+func formatInlineJSON(value any) string {
+	return formatJSON(value)
+}
+
+func formatJSON(value any, options ...json.Options) string {
+	const placeholder = "true"
+	type preview struct {
+		offset int
+		values []byte
+	}
+	var previews []preview
+	marshalPreview := json.MarshalToFunc(func(enc *jsontext.Encoder, value any) error {
+		switch value.(type) {
+		case json.Marshaler, json.MarshalerTo, encoding.TextAppender, encoding.TextMarshaler:
+			return errors.ErrUnsupported
+		}
+		array := reflect.ValueOf(value).Elem()
+		if !isLongFloatArray(array) {
+			return errors.ErrUnsupported
+		}
+		values, err := json.Marshal([]any{array.Index(0).Interface(), array.Index(1).Interface()})
 		if err != nil {
-			return formatTableValue(value)
+			return err
 		}
-		return string(encoded)
-	}
-	return formatTableValue(value)
-}
-
-func formatTableValue(value any) string {
-	value = indirectInterface(value)
-	switch typed := value.(type) {
-	case nil:
-		return ""
-	case string:
-		if formatted, ok := formatTimeValue(typed); ok {
-			return formatted
+		// A non-empty placeholder keeps fields tagged omitempty.
+		if err := enc.WriteToken(jsontext.True); err != nil {
+			return err
 		}
-		return typed
-	case json.Number:
-		return typed.String()
-	case bool:
-		return strconv.FormatBool(typed)
-	case float64:
-		return strconv.FormatFloat(typed, 'f', -1, 64)
-	case float32:
-		return strconv.FormatFloat(float64(typed), 'f', -1, 32)
-	case int:
-		return strconv.Itoa(typed)
-	case int64:
-		return strconv.FormatInt(typed, 10)
-	case int32:
-		return strconv.FormatInt(int64(typed), 10)
-	case uint:
-		return strconv.FormatUint(uint64(typed), 10)
-	case uint64:
-		return strconv.FormatUint(typed, 10)
-	case uint32:
-		return strconv.FormatUint(uint64(typed), 10)
-	case time.Time:
-		return typed.Format(time.RFC3339)
-	}
-	if _, ok := sliceValues(value); ok {
-		if summary, ok := formatArraySummary(value); ok {
-			return summary
-		}
-		encoded, err := json.Marshal(summarizeLongArrays(value))
-		if err != nil {
-			return fmt.Sprint(value)
-		}
-		return string(encoded)
-	}
-	if isObjectValue(value) {
-		encoded, err := json.Marshal(summarizeLongArrays(value))
-		if err != nil {
-			return fmt.Sprint(value)
-		}
-		return string(encoded)
-	}
-	return fmt.Sprint(value)
-}
-
-func formatTimeValue(value string) (string, bool) {
-	timestamp, err := time.Parse(time.RFC3339Nano, value)
-	if err != nil {
-		return "", false
-	}
-	return timestamp.Format(time.RFC3339), true
-}
-
-func isObjectValue(value any) bool {
-	_, ok := objectFields(value)
-	return ok
-}
-
-func sliceValues(value any) ([]any, bool) {
-	v := indirectValue(reflect.ValueOf(value))
-	if !v.IsValid() || (v.Kind() != reflect.Slice && v.Kind() != reflect.Array) {
-		return nil, false
-	}
-	values := make([]any, v.Len())
-	for i := 0; i < v.Len(); i++ {
-		values[i] = valueFromReflect(v.Index(i))
-	}
-	return values, true
-}
-
-func objectFields(value any) (map[string]any, bool) {
-	return objectFieldsFromValue(reflect.ValueOf(value))
-}
-
-func objectFieldsFromValue(v reflect.Value) (map[string]any, bool) {
-	v = indirectValue(v)
-	if !v.IsValid() {
-		return nil, false
-	}
-	if v.CanInterface() {
-		if _, ok := v.Interface().(time.Time); ok {
-			return nil, false
-		}
-	}
-	if v.Type() == reflect.TypeOf(time.Time{}) {
-		return nil, false
-	}
-	switch v.Kind() {
-	case reflect.Map:
-		if v.Type().Key().Kind() != reflect.String {
-			return nil, false
-		}
-		object := make(map[string]any, v.Len())
-		iter := v.MapRange()
-		for iter.Next() {
-			object[iter.Key().String()] = valueFromReflect(iter.Value())
-		}
-		return object, true
-	case reflect.Struct:
-		object := make(map[string]any, v.NumField())
-		t := v.Type()
-		for i := 0; i < v.NumField(); i++ {
-			field := t.Field(i)
-			if field.PkgPath != "" && !field.Anonymous {
-				continue
-			}
-			fieldValue := v.Field(i)
-			if field.Anonymous {
-				if embedded, ok := objectFieldsFromValue(fieldValue); ok {
-					for key, value := range embedded {
-						object[key] = value
-					}
-					continue
-				}
-			}
-			object[field.Name] = valueFromReflect(fieldValue)
-		}
-		return object, true
-	default:
-		return nil, false
-	}
-}
-
-func valueFromReflect(v reflect.Value) any {
-	v = indirectValue(v)
-	if !v.IsValid() {
+		previews = append(previews, preview{int(enc.OutputOffset()) - len(placeholder), values})
 		return nil
+	})
+	options = append(options, json.Deterministic(true), json.WithMarshalers(marshalPreview))
+	encoded := lo.Must(json.Marshal(value, options...))
+	if len(previews) == 0 {
+		return string(encoded)
 	}
-	if v.CanInterface() {
-		return v.Interface()
+	// Replace only the placeholders emitted by the preview marshaler.
+	var output strings.Builder
+	start := 0
+	for _, preview := range previews {
+		output.Write(encoded[start:preview.offset])
+		output.Write(preview.values[:len(preview.values)-1])
+		output.WriteString(",...]")
+		start = preview.offset + len(placeholder)
 	}
-	return fmt.Sprint(v)
+	output.Write(encoded[start:])
+	return output.String()
 }
 
-func indirectInterface(value any) any {
-	return valueFromReflect(reflect.ValueOf(value))
-}
-
-func indirectValue(v reflect.Value) reflect.Value {
-	for v.IsValid() && (v.Kind() == reflect.Interface || v.Kind() == reflect.Pointer) {
-		if v.IsNil() {
-			return reflect.Value{}
+func isLongFloatArray(array reflect.Value) bool {
+	if (array.Kind() != reflect.Array && array.Kind() != reflect.Slice) || array.Len() <= 2 {
+		return false
+	}
+	switch array.Type().Elem().Kind() {
+	case reflect.Float32, reflect.Float64:
+		return true
+	case reflect.Interface:
+		// JSON numbers decoded into an interface are float64 values.
+		for i := 0; i < array.Len(); i++ {
+			kind := array.Index(i).Elem().Kind()
+			if kind != reflect.Float32 && kind != reflect.Float64 {
+				return false
+			}
 		}
-		v = v.Elem()
+		return true
 	}
-	return v
+	return false
 }
