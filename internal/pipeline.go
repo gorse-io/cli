@@ -137,6 +137,9 @@ var pipelineItemToItemGetCmd = &cobra.Command{
 		if err := p.Load(newClient(cmd)); err != nil {
 			return err
 		}
+		if err := p.requireUnambiguousName("item-to-item", name); err != nil {
+			return err
+		}
 		for _, value := range p.ItemToItem {
 			if value.Name == name {
 				return marshal(cmd, value)
@@ -193,6 +196,9 @@ var pipelineItemToItemUpdateCmd = &cobra.Command{
 		if err := p.Load(c); err != nil {
 			return err
 		}
+		if err := p.requireUnambiguousName("item-to-item", name); err != nil {
+			return err
+		}
 		for i, value := range p.ItemToItem {
 			if value.Name != name {
 				continue
@@ -225,6 +231,9 @@ var pipelineItemToItemDeleteCmd = &cobra.Command{
 		c := newClient(cmd)
 		var p Pipeline
 		if err := p.Load(c); err != nil {
+			return err
+		}
+		if err := p.requireUnambiguousName("item-to-item", name); err != nil {
 			return err
 		}
 		for i, value := range p.ItemToItem {
@@ -273,6 +282,9 @@ var pipelineUserToUserGetCmd = &cobra.Command{
 		}
 		var p Pipeline
 		if err := p.Load(newClient(cmd)); err != nil {
+			return err
+		}
+		if err := p.requireUnambiguousName("user-to-user", name); err != nil {
 			return err
 		}
 		for _, value := range p.UserToUser {
@@ -331,6 +343,9 @@ var pipelineUserToUserUpdateCmd = &cobra.Command{
 		if err := p.Load(c); err != nil {
 			return err
 		}
+		if err := p.requireUnambiguousName("user-to-user", name); err != nil {
+			return err
+		}
 		for i, value := range p.UserToUser {
 			if value.Name != name {
 				continue
@@ -363,6 +378,9 @@ var pipelineUserToUserDeleteCmd = &cobra.Command{
 		c := newClient(cmd)
 		var p Pipeline
 		if err := p.Load(c); err != nil {
+			return err
+		}
+		if err := p.requireUnambiguousName("user-to-user", name); err != nil {
 			return err
 		}
 		for i, value := range p.UserToUser {
@@ -411,6 +429,9 @@ var pipelineNonPersonalizedGetCmd = &cobra.Command{
 		}
 		var p Pipeline
 		if err := p.Load(newClient(cmd)); err != nil {
+			return err
+		}
+		if err := p.requireUnambiguousName("non-personalized", name); err != nil {
 			return err
 		}
 		for _, value := range p.NonPersonalized {
@@ -469,6 +490,9 @@ var pipelineNonPersonalizedUpdateCmd = &cobra.Command{
 		if err := p.Load(c); err != nil {
 			return err
 		}
+		if err := p.requireUnambiguousName("non-personalized", name); err != nil {
+			return err
+		}
 		for i, value := range p.NonPersonalized {
 			if value.Name != name {
 				continue
@@ -501,6 +525,9 @@ var pipelineNonPersonalizedDeleteCmd = &cobra.Command{
 		c := newClient(cmd)
 		var p Pipeline
 		if err := p.Load(c); err != nil {
+			return err
+		}
+		if err := p.requireUnambiguousName("non-personalized", name); err != nil {
 			return err
 		}
 		for i, value := range p.NonPersonalized {
@@ -549,6 +576,9 @@ var pipelineExternalGetCmd = &cobra.Command{
 		}
 		var p Pipeline
 		if err := p.Load(newClient(cmd)); err != nil {
+			return err
+		}
+		if err := p.requireUnambiguousName("external", name); err != nil {
 			return err
 		}
 		for _, value := range p.External {
@@ -613,6 +643,9 @@ var pipelineExternalUpdateCmd = &cobra.Command{
 		if err := p.Load(c); err != nil {
 			return err
 		}
+		if err := p.requireUnambiguousName("external", name); err != nil {
+			return err
+		}
 		for i, value := range p.External {
 			if value.Name != name {
 				continue
@@ -640,6 +673,9 @@ var pipelineExternalDeleteCmd = &cobra.Command{
 		c := newClient(cmd)
 		var p Pipeline
 		if err := p.Load(c); err != nil {
+			return err
+		}
+		if err := p.requireUnambiguousName("external", name); err != nil {
 			return err
 		}
 		for i, value := range p.External {
@@ -847,21 +883,21 @@ func pipelineUpdateSettings(cmd *cobra.Command, args []string) error {
 // the server has no compare-and-swap API; concurrent edits can overwrite changes.
 // The Master validates the submitted configuration using its actual rules.
 // Configuration fields and supporting types are copied from
-// gorse/config/config.go at d3186be36756. Keep fields and tags aligned when
-// updating the Gorse dependency.
+// gorse/config/config.go at d3186be36756, without server-side validation tags.
+// Keep fields and serialization tags aligned when updating the Gorse dependency.
 type Pipeline struct {
 	rawRecommend    map[string]any
-	CacheSize       int                     `mapstructure:"cache_size" validate:"gt=0"`
-	CacheExpire     time.Duration           `mapstructure:"cache_expire" validate:"gt=0"`
-	ContextSize     int                     `mapstructure:"context_size" validate:"gt=0"`
-	ActiveUserTTL   int                     `mapstructure:"active_user_ttl" validate:"gte=0"`
+	CacheSize       int                     `mapstructure:"cache_size"`
+	CacheExpire     time.Duration           `mapstructure:"cache_expire"`
+	ContextSize     int                     `mapstructure:"context_size"`
+	ActiveUserTTL   int                     `mapstructure:"active_user_ttl"`
 	DataSource      DataSourceConfig        `mapstructure:"data_source"`
 	Search          SearchConfig            `mapstructure:"search"`
-	NonPersonalized []NonPersonalizedConfig `mapstructure:"non-personalized" validate:"dive"`
-	ItemToItem      []ItemToItemConfig      `mapstructure:"item-to-item" validate:"dive"`
-	UserToUser      []UserToUserConfig      `mapstructure:"user-to-user" validate:"dive"`
+	NonPersonalized []NonPersonalizedConfig `mapstructure:"non-personalized"`
+	ItemToItem      []ItemToItemConfig      `mapstructure:"item-to-item"`
+	UserToUser      []UserToUserConfig      `mapstructure:"user-to-user"`
 	Collaborative   CollaborativeConfig     `mapstructure:"collaborative"`
-	External        []ExternalConfig        `mapstructure:"external" validate:"dive"`
+	External        []ExternalConfig        `mapstructure:"external"`
 	Replacement     ReplacementConfig       `mapstructure:"replacement"`
 	Ranker          RankerConfig            `mapstructure:"ranker"`
 	Fallback        FallbackConfig          `mapstructure:"fallback"`
@@ -869,41 +905,41 @@ type Pipeline struct {
 
 // Feedback expressions remain strings in their API representation; the server validates them.
 type DataSourceConfig struct {
-	PositiveFeedbackTypes []string `mapstructure:"positive_feedback_types"`                // positive feedback type
-	NegativeFeedbackTypes []string `mapstructure:"negative_feedback_types"`                // negative feedback type (highest priority)
-	ReadFeedbackTypes     []string `mapstructure:"read_feedback_types"`                    // feedback type for read event
-	PositiveFeedbackTTL   uint     `mapstructure:"positive_feedback_ttl" validate:"gte=0"` // time-to-live of positive feedbacks
-	ItemTTL               uint     `mapstructure:"item_ttl" validate:"gte=0"`              // item-to-live of items
+	PositiveFeedbackTypes []string `mapstructure:"positive_feedback_types"` // positive feedback type
+	NegativeFeedbackTypes []string `mapstructure:"negative_feedback_types"` // negative feedback type (highest priority)
+	ReadFeedbackTypes     []string `mapstructure:"read_feedback_types"`     // feedback type for read event
+	PositiveFeedbackTTL   uint     `mapstructure:"positive_feedback_ttl"`   // time-to-live of positive feedbacks
+	ItemTTL               uint     `mapstructure:"item_ttl"`                // item-to-live of items
 }
 
 type SearchConfig struct {
-	Columns []string `mapstructure:"columns" validate:"dive,item_expr"`
+	Columns []string `mapstructure:"columns"`
 }
 
 type NonPersonalizedConfig struct {
 	Name   string `mapstructure:"name" json:"name"`
-	Score  string `mapstructure:"score" json:"score" validate:"required,item_expr"`
-	Filter string `mapstructure:"filter" json:"filter" validate:"item_expr"`
+	Score  string `mapstructure:"score" json:"score"`
+	Filter string `mapstructure:"filter" json:"filter"`
 }
 
 type ItemToItemConfig struct {
 	Name   string `mapstructure:"name" json:"name"`
-	Type   string `mapstructure:"type" json:"type" validate:"oneof=embedding tags users auto"`
-	Column string `mapstructure:"column" json:"column" validate:"item_expr"`
+	Type   string `mapstructure:"type" json:"type"`
+	Column string `mapstructure:"column" json:"column"`
 }
 
 type UserToUserConfig struct {
 	Name   string `mapstructure:"name" json:"name"`
-	Type   string `mapstructure:"type" json:"type" validate:"oneof=embedding tags items auto"`
-	Column string `mapstructure:"column" json:"column" validate:"item_expr"`
+	Type   string `mapstructure:"type" json:"type"`
+	Column string `mapstructure:"column" json:"column"`
 }
 
 type CollaborativeConfig struct {
-	Type           string              `mapstructure:"type" validate:"oneof=none mf"`
-	FitPeriod      time.Duration       `mapstructure:"fit_period" validate:"gt=0"`
-	FitEpoch       int                 `mapstructure:"fit_epoch" validate:"gt=0"`
-	OptimizePeriod time.Duration       `mapstructure:"optimize_period" validate:"gte=0"`
-	OptimizeTrials int                 `mapstructure:"optimize_trials" validate:"gt=0"`
+	Type           string              `mapstructure:"type"`
+	FitPeriod      time.Duration       `mapstructure:"fit_period"`
+	FitEpoch       int                 `mapstructure:"fit_epoch"`
+	OptimizePeriod time.Duration       `mapstructure:"optimize_period"`
+	OptimizeTrials int                 `mapstructure:"optimize_trials"`
 	EarlyStopping  EarlyStoppingConfig `mapstructure:"early_stopping"`
 }
 
@@ -918,18 +954,18 @@ type ExternalConfig struct {
 
 type ReplacementConfig struct {
 	EnableReplacement        bool    `mapstructure:"enable_replacement"`
-	PositiveReplacementDecay float64 `mapstructure:"positive_replacement_decay" validate:"gt=0"`
-	ReadReplacementDecay     float64 `mapstructure:"read_replacement_decay" validate:"gt=0"`
+	PositiveReplacementDecay float64 `mapstructure:"positive_replacement_decay"`
+	ReadReplacementDecay     float64 `mapstructure:"read_replacement_decay"`
 }
 
 type RankerConfig struct {
-	Type           string              `mapstructure:"type" validate:"oneof=none fm reranker decision"`
+	Type           string              `mapstructure:"type"`
 	Recommenders   []string            `mapstructure:"recommenders"`
-	CacheExpire    time.Duration       `mapstructure:"cache_expire" validate:"gt=0"`
-	FitPeriod      time.Duration       `mapstructure:"fit_period" validate:"gt=0"`
-	FitEpoch       int                 `mapstructure:"fit_epoch" validate:"gt=0"`
-	OptimizePeriod time.Duration       `mapstructure:"optimize_period" validate:"gte=0"`
-	OptimizeTrials int                 `mapstructure:"optimize_trials" validate:"gt=0"`
+	CacheExpire    time.Duration       `mapstructure:"cache_expire"`
+	FitPeriod      time.Duration       `mapstructure:"fit_period"`
+	FitEpoch       int                 `mapstructure:"fit_epoch"`
+	OptimizePeriod time.Duration       `mapstructure:"optimize_period"`
+	OptimizeTrials int                 `mapstructure:"optimize_trials"`
 	EarlyStopping  EarlyStoppingConfig `mapstructure:"early_stopping"`
 	RerankerAPI    RerankerAPIConfig   `mapstructure:"reranker_api"`
 	DecisionAPI    DecisionAPIConfig   `mapstructure:"decision_api"`
@@ -994,8 +1030,24 @@ func (c *CollaborativeConfig) FullName() string {
 	return "collaborative"
 }
 
+// requireUnambiguousName protects operations that select one recommender by name.
+// Other entries are left for the server to validate when saving configuration.
+func (p *Pipeline) requireUnambiguousName(kind, name string) error {
+	count := 0
+	for _, fullName := range p.ListRecommenders() {
+		if fullName == kind+"/"+name {
+			count++
+		}
+	}
+	if count > 1 {
+		return fmt.Errorf("duplicate %s name %q", kind, name)
+	}
+	return nil
+}
+
 // Load replaces the local fields with the current recommendation configuration
-// from the client.
+// from the client without applying business validation. This allows inspection
+// and repair of existing configuration; the server validates writes.
 func (p *Pipeline) Load(c *client.AdminClient) error {
 	root, err := c.GetConfigMap()
 	if err != nil {
@@ -1022,20 +1074,6 @@ func (p *Pipeline) Load(c *client.AdminClient) error {
 	}
 	if err := decoder.Decode(raw); err != nil {
 		return err
-	}
-	seen := make(map[string]bool)
-	for _, fullName := range value.ListRecommenders() {
-		kind, name, named := strings.Cut(fullName, "/")
-		if !named {
-			continue
-		}
-		if strings.TrimSpace(name) == "" {
-			return fmt.Errorf("recommend.%s: name must not be empty", kind)
-		}
-		if seen[fullName] {
-			return fmt.Errorf("duplicate %s name %q", kind, name)
-		}
-		seen[fullName] = true
 	}
 	value.rawRecommend = raw
 	*p = value

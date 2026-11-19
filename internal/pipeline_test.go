@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/gorse-io/gorse/client"
+	"github.com/gorse-io/gorse/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -260,4 +261,73 @@ func TestPipelineSettingsPreserveUnknown(t *testing.T) {
 	expected["model"] = "new"
 	raw["cache_expire"] = "1h0m0.000000001s"
 	require.Equal(t, map[string]any{"recommend": raw}, posted)
+}
+
+func TestPipelineLoadDoesNotValidateRecommenders(t *testing.T) {
+	raw := map[string]any{
+		"collaborative": map[string]any{"type": "future-type"},
+		"item-to-item": []any{
+			map[string]any{"name": "", "type": "future-type"},
+			map[string]any{"name": "duplicate"},
+			map[string]any{"name": "duplicate"},
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"recommend": raw})
+	}))
+	defer server.Close()
+	var p Pipeline
+	require.NoError(t, p.Load(client.NewAdminClient(server.URL, "key")))
+	require.Len(t, p.ItemToItem, 3)
+	require.Empty(t, p.ItemToItem[0].Name)
+	require.Equal(t, "future-type", p.ItemToItem[0].Type)
+	require.Equal(t, "future-type", p.Collaborative.Type)
+	require.Equal(t, raw, p.rawRecommend)
+}
+
+func (s *CLITestSuite) TestPipelineAmbiguousRecommenderOperations() {
+	s.pipelineSettingsFixture()
+	s.master.ConfigMutex.Lock()
+	s.master.Config.Recommend.ItemToItem = []config.ItemToItemConfig{{Name: "duplicate", Type: "auto"}, {Name: "duplicate", Type: "auto"}}
+	s.master.Config.Recommend.UserToUser = []config.UserToUserConfig{{Name: "duplicate", Type: "auto"}, {Name: "duplicate", Type: "auto"}}
+	s.master.Config.Recommend.NonPersonalized = []config.NonPersonalizedConfig{{Name: "duplicate", Score: "1"}, {Name: "duplicate", Score: "1"}}
+	s.master.Config.Recommend.External = []config.ExternalConfig{{Name: "duplicate", Script: "return []"}, {Name: "duplicate", Script: "return []"}}
+	s.master.ConfigMutex.Unlock()
+	for _, kind := range []string{"item-to-item", "user-to-user", "non-personalized", "external"} {
+		// Listing must remain possible even if configuration contains duplicate names.
+		_, err := s.Command("pipeline", kind, "list")
+		s.Require().NoError(err)
+		for _, action := range []string{"get", "update", "delete"} {
+			args := []string{"pipeline", kind, action, "duplicate"}
+			if action == "update" {
+				switch kind {
+				case "item-to-item", "user-to-user":
+					args = append(args, "--type=auto")
+				case "non-personalized":
+					args = append(args, "--score=1")
+				case "external":
+					args = append(args, "--script=return []")
+				}
+			}
+			before := s.pipelineSettings()
+			_, err := s.Command(args...)
+			s.Require().EqualError(err, fmt.Sprintf("duplicate %s name %q", kind, "duplicate"))
+			s.Equal(before, s.pipelineSettings())
+		}
+	}
+}
+
+func TestPipelineRecommenderNameUnambiguous(t *testing.T) {
+	p := Pipeline{
+		ItemToItem:      []ItemToItemConfig{{Name: "duplicate"}, {Name: "duplicate"}, {Name: "unique"}},
+		UserToUser:      []UserToUserConfig{{Name: "duplicate"}, {Name: "duplicate"}},
+		NonPersonalized: []NonPersonalizedConfig{{Name: "duplicate"}, {Name: "duplicate"}},
+		External:        []ExternalConfig{{Name: "duplicate"}, {Name: "duplicate"}},
+	}
+	for _, kind := range []string{"item-to-item", "user-to-user", "non-personalized", "external"} {
+		require.EqualError(t, p.requireUnambiguousName(kind, "duplicate"), fmt.Sprintf("duplicate %s name %q", kind, "duplicate"))
+		require.NoError(t, p.requireUnambiguousName(kind, "missing"))
+	}
+	require.NoError(t, p.requireUnambiguousName("item-to-item", "unique"))
 }
