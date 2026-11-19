@@ -23,7 +23,6 @@ import (
 	"os"
 	"strings"
 	"text/tabwriter"
-	"time"
 
 	"github.com/gorse-io/gorse/client"
 	"github.com/samber/lo"
@@ -40,12 +39,15 @@ var PsCmd = &cobra.Command{
 			os.Exit(1)
 		}
 		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
-		fmt.Fprintln(table, "TRACER\tNAME\tSTATUS\tPROGRESS\tERROR\tSTART-TIME\tFINISH-TIME")
+		fmt.Fprintln(table, "NAME\tSTATUS\tPROGRESS\tSTART-TIME\tFINISH-TIME")
 		for _, task := range tasks {
-			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				task.Tracer, task.Name, task.Status,
-				formatProgressBar(task.Count, task.Total), task.Error,
-				task.StartTime, task.FinishTime)
+			progress := task.Error
+			if progress == "" {
+				progress = formatProgressBar(task.Count, task.Total)
+			}
+			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n",
+				task.Name, task.Status, progress,
+				formatTimestamp(task.StartTime), formatTimestamp(task.FinishTime))
 		}
 		lo.Must0(table.Flush())
 	},
@@ -117,8 +119,8 @@ var GetStatsCmd = &cobra.Command{
 		}
 		output := cmd.OutOrStdout()
 		fmt.Fprintf(output, "BinaryVersion:          %s\n", stats.BinaryVersion)
-		fmt.Fprintf(output, "LatestItemsUpdateTime:  %s\n", stats.LatestItemsUpdateTime.Format(time.RFC3339))
-		fmt.Fprintf(output, "MatchingModelFitTime:   %s\n", stats.MatchingModelFitTime.Format(time.RFC3339))
+		fmt.Fprintf(output, "LatestItemsUpdateTime:  %s\n", formatTimestamp(stats.LatestItemsUpdateTime))
+		fmt.Fprintf(output, "MatchingModelFitTime:   %s\n", formatTimestamp(stats.MatchingModelFitTime))
 		fmt.Fprintf(output, "MatchingModelScore:\n%s\n", lo.Must(json.MarshalIndent(stats.MatchingModelScore, "", "\t")))
 		fmt.Fprintf(output, "NumItemLabels:          %d\n", stats.NumItemLabels)
 		fmt.Fprintf(output, "NumItems:               %d\n", stats.NumItems)
@@ -129,8 +131,8 @@ var GetStatsCmd = &cobra.Command{
 		fmt.Fprintf(output, "NumValidNegFeedback:    %d\n", stats.NumValidNegFeedback)
 		fmt.Fprintf(output, "NumValidPosFeedback:    %d\n", stats.NumValidPosFeedback)
 		fmt.Fprintf(output, "NumWorkers:             %d\n", stats.NumWorkers)
-		fmt.Fprintf(output, "PopularItemsUpdateTime: %s\n", stats.PopularItemsUpdateTime.Format(time.RFC3339))
-		fmt.Fprintf(output, "RankingModelFitTime:    %s\n", stats.RankingModelFitTime.Format(time.RFC3339))
+		fmt.Fprintf(output, "PopularItemsUpdateTime: %s\n", formatTimestamp(stats.PopularItemsUpdateTime))
+		fmt.Fprintf(output, "RankingModelFitTime:    %s\n", formatTimestamp(stats.RankingModelFitTime))
 		fmt.Fprintf(output, "RankingModelScore:\n%s\n", lo.Must(json.MarshalIndent(stats.RankingModelScore, "", "\t")))
 	},
 }

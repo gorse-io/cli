@@ -142,7 +142,7 @@ func printScoredItems(output io.Writer, items []client.ScoredItem) {
 	for _, item := range items {
 		fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\t%v\n",
 			item.ItemId, item.Categories, item.IsHidden,
-			item.Timestamp, formatInlineJSON(item.Labels), item.Comment, item.Score)
+			formatTimestamp(item.Timestamp), formatInlineJSON(item.Labels), item.Comment, item.Score)
 	}
 	lo.Must0(table.Flush())
 }

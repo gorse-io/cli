@@ -21,6 +21,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFormatProgressBar(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		count, total int
+		want         string
+	}{
+		{"not started", 0, 10, "[--------------------] 0%"},
+		{"halfway", 5, 10, "[##########----------] 50%"},
+		{"complete", 10, 10, "[####################] 100%"},
+		{"count exceeds total", 11, 10, "[####################] 100%"},
+		{"negative count", -1, 10, "[--------------------] 0%"},
+		{"zero total", 5, 0, "[--------------------] 0%"},
+		{"negative total", 5, -1, "[--------------------] 0%"},
+		{"round half up", 1, 8, "[###-----------------] 13%"},
+		{"round down", 1, 9, "[##------------------] 11%"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, formatProgressBar(tc.count, tc.total))
+		})
+	}
+}
+
 func TestFormatJSON(t *testing.T) {
 	var decoded any
 	require.NoError(t, json.Unmarshal([]byte(`[1,2,3]`), &decoded))

@@ -87,6 +87,10 @@ func nextPage(cmd *cobra.Command, cursor string, n int) {
 	fmt.Fprintf(cmd.OutOrStdout(), "\nNext page: %s\n", strings.Join(parts, " "))
 }
 
+func formatTimestamp(timestamp time.Time) string {
+	return timestamp.Format(time.RFC3339)
+}
+
 func formatProgressBar(count, total int) string {
 	const width = 20
 	if count < 0 {

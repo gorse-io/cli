@@ -160,7 +160,7 @@ var getItemCmd = &cobra.Command{
 		fmt.Fprintf(output, "Comment:    %s\n", item.Comment)
 		fmt.Fprintf(output, "Categories: %s\n", item.Categories)
 		fmt.Fprintf(output, "IsHidden:   %t\n", item.IsHidden)
-		fmt.Fprintf(output, "Timestamp:  %s\n", item.Timestamp.Format(time.RFC3339))
+		fmt.Fprintf(output, "Timestamp:  %s\n", formatTimestamp(item.Timestamp))
 		fmt.Fprintf(output, "Labels:\n%s\n", formatIndentJSON(item.Labels))
 	},
 }
@@ -196,7 +196,7 @@ var listItemCmd = &cobra.Command{
 		for _, item := range items.Items {
 			fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\n",
 				item.ItemId, item.Categories, item.IsHidden,
-				item.Timestamp, formatInlineJSON(item.Labels), item.Comment)
+				formatTimestamp(item.Timestamp), formatInlineJSON(item.Labels), item.Comment)
 		}
 		if err := table.Flush(); err != nil {
 			return err

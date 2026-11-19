@@ -76,16 +76,17 @@ func (s *CLITestSuite) TestItemImportExport() {
 
 func (s *CLITestSuite) TestItemPagination() {
 	ctx := s.T().Context()
-	timestamp := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	timestamp := time.Date(2026, 1, 2, 3, 4, 5, 149268406, time.UTC)
 	s.Require().NoError(s.master.DataClient.BatchInsertItems(ctx, []data.Item{
 		{ItemId: "page-a", Comment: "first", Timestamp: timestamp},
 		{ItemId: "page-b", Comment: "second", Timestamp: timestamp},
 		{ItemId: "page-c", Comment: "third", Timestamp: timestamp},
 	}))
 	header := []string{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT"}
-	first := []string{"page-a", "[]", "false", timestamp.String(), "null", "first"}
-	second := []string{"page-b", "[]", "false", timestamp.String(), "null", "second"}
-	third := []string{"page-c", "[]", "false", timestamp.String(), "null", "third"}
+	const timestampCell = "2026-01-02T03:04:05Z"
+	first := []string{"page-a", "[]", "false", timestampCell, "null", "first"}
+	second := []string{"page-b", "[]", "false", timestampCell, "null", "second"}
+	third := []string{"page-c", "[]", "false", timestampCell, "null", "third"}
 	cursor, _, err := s.master.DataClient.GetItems(ctx, "", 2, nil)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(cursor)
@@ -252,8 +253,8 @@ Labels:
 
 	expected := [][]string{
 		{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT"},
-		{"added-item", "[news tech]", "true", "2026-01-02 03:04:05 +0000 UTC", `{"embedding":[0.1,0.2],"genre":"science"}`, "new item"},
-		{"minimal-item", "[]", "false", item.Timestamp.String(), "{}", ""},
+		{"added-item", "[news tech]", "true", "2026-01-02T03:04:05Z", `{"embedding":[0.1,0.2],"genre":"science"}`, "new item"},
+		{"minimal-item", "[]", "false", "0001-01-01T00:00:00Z", "{}", ""},
 	}
 	out, err = s.Command("item", "list", "-n", "1")
 	s.Require().NoError(err)

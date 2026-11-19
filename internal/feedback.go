@@ -134,9 +134,9 @@ var getFeedbackCmd = &cobra.Command{
 		fmt.Fprintln(table, "TIMESTAMP\tFEEDBACK-TYPE\tUSER-ID\tITEM-ID\tVALUE\tLABELS\tUPDATED\tCOMMENT")
 		for _, record := range feedback {
 			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%v\t%s\t%s\t%s\n",
-				record.Timestamp, record.FeedbackType,
+				formatTimestamp(record.Timestamp), record.FeedbackType,
 				record.UserId, record.ItemId, record.Value,
-				formatInlineJSON(record.Labels), record.Updated, record.Comment)
+				formatInlineJSON(record.Labels), formatTimestamp(record.Updated), record.Comment)
 		}
 		lo.Must0(table.Flush())
 	},
