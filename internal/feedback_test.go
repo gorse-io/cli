@@ -1,3 +1,17 @@
+// Copyright 2026 gorse Project Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package internal
 
 import (
@@ -16,7 +30,7 @@ func (s *CLITestSuite) TestFeedbackImportExport() {
 	input := `{"FeedbackType":"click","UserId":"bulk-user","ItemId":"bulk-item","Value":2.5,"Timestamp":"2026-01-02T03:04:05Z","Labels":{"source":"web"},"Comment":"反馈 A"}
 {"FeedbackType":"read","UserId":"bulk-user","ItemId":"bulk-item","Value":0,"Timestamp":"2026-02-03T04:05:06Z","Labels":[],"Comment":"Feedback B"}
 `
-	expected := decodeJSONL[server.Feedback](s.T(), input)
+	expected := decodeJSONLines[server.Feedback](s.T(), input)
 	dir := s.T().TempDir()
 	inputPath := filepath.Join(dir, "import data.jsonl")
 	outputPath := filepath.Join(dir, "export data.jsonl")
@@ -29,7 +43,7 @@ func (s *CLITestSuite) TestFeedbackImportExport() {
 	s.Contains(out, "Data exported to "+outputPath)
 	content, err := os.ReadFile(outputPath)
 	s.Require().NoError(err)
-	s.ElementsMatch(expected, decodeJSONL[server.Feedback](s.T(), string(content)))
+	s.ElementsMatch(expected, decodeJSONLines[server.Feedback](s.T(), string(content)))
 
 	defer s.root.SetIn(nil)
 	for _, flags := range [][]string{{"-"}, nil} {
@@ -43,7 +57,7 @@ func (s *CLITestSuite) TestFeedbackImportExport() {
 		s.Equal("2 feedback imported\n", out)
 		out, err = s.Command(append([]string{"feedback", "export"}, flags...)...)
 		s.Require().NoError(err)
-		s.ElementsMatch(expected, decodeJSONL[server.Feedback](s.T(), out))
+		s.ElementsMatch(expected, decodeJSONLines[server.Feedback](s.T(), out))
 	}
 }
 

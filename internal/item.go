@@ -140,7 +140,7 @@ var itemCategoriesCmd = &cobra.Command{
 			os.Exit(1)
 		}
 		for _, category := range categories {
-			fmt.Fprintln(cmd.ErrOrStderr(), category)
+			fmt.Fprintln(cmd.OutOrStdout(), category)
 		}
 	},
 }

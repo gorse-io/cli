@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/gorse-io/gorse/client"
@@ -38,19 +39,15 @@ var PsCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		rows := make([][]string, len(tasks))
-		for i, task := range tasks {
-			rows[i] = []string{
-				formatTableValue(task.Tracer),
-				formatTableValue(task.Name),
-				formatTableValue(task.Status),
-				formatTableValue(formatProgressBar(task.Count, task.Total)),
-				formatTableValue(task.Error),
-				formatTableValue(task.StartTime),
-				formatTableValue(task.FinishTime),
-			}
+		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
+		fmt.Fprintln(table, "TRACER\tNAME\tSTATUS\tPROGRESS\tERROR\tSTART-TIME\tFINISH-TIME")
+		for _, task := range tasks {
+			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				formatTableValue(task.Tracer), formatTableValue(task.Name), formatTableValue(task.Status),
+				formatProgressBar(task.Count, task.Total), formatTableValue(task.Error),
+				formatTableValue(task.StartTime), formatTableValue(task.FinishTime))
 		}
-		printTable(cmd.OutOrStdout(), []string{"Tracer", "Name", "Status", "Progress", "Error", "StartTime", "FinishTime"}, rows)
+		lo.Must0(table.Flush())
 	},
 }
 
@@ -178,23 +175,6 @@ func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
 		}
 	}
 	return endpoint, apiKey
-}
-
-func nextPage(cmd *cobra.Command, cursor string, n int) {
-	if cursor == "" {
-		return
-	}
-	parts := []string{cmd.CommandPath(), "-n", fmt.Sprint(n), "--cursor", cursor}
-	for _, name := range []string{"application", "endpoint"} {
-		if cmd.Flags().Changed(name) {
-			value, _ := cmd.Flags().GetString(name)
-			parts = append(parts, "--"+name, value)
-		}
-	}
-	if cmd.Flags().Changed("api-key") {
-		parts = append(parts, "--api-key", "YOUR_API_KEY")
-	}
-	fmt.Fprintf(cmd.OutOrStdout(), "\nNext page: %s\n", strings.Join(parts, " "))
 }
 
 func newClient(cmd *cobra.Command) *client.AdminClient {

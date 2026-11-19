@@ -1,3 +1,17 @@
+// Copyright 2026 gorse Project Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package internal
 
 import (
@@ -18,7 +32,7 @@ func (s *CLITestSuite) TestUserImportExport() {
 	input := `{"UserId":"bulk-user-a","Labels":{"role":"reader"},"Comment":"用户 A"}
 {"UserId":"bulk-user-b","Labels":["writer"],"Comment":"User B"}
 `
-	expected := decodeJSONL[gorse.User](s.T(), input)
+	expected := decodeJSONLines[gorse.User](s.T(), input)
 	dir := s.T().TempDir()
 	inputPath := filepath.Join(dir, "import data.jsonl")
 	outputPath := filepath.Join(dir, "export data.jsonl")
@@ -31,7 +45,7 @@ func (s *CLITestSuite) TestUserImportExport() {
 	s.Contains(out, "Data exported to "+outputPath)
 	content, err := os.ReadFile(outputPath)
 	s.Require().NoError(err)
-	s.ElementsMatch(expected, decodeJSONL[gorse.User](s.T(), string(content)))
+	s.ElementsMatch(expected, decodeJSONLines[gorse.User](s.T(), string(content)))
 
 	defer s.root.SetIn(nil)
 	for _, flags := range [][]string{{"-"}, nil} {
@@ -45,11 +59,11 @@ func (s *CLITestSuite) TestUserImportExport() {
 		s.Equal("2 users imported\n", out)
 		out, err = s.Command(append([]string{"user", "export"}, flags...)...)
 		s.Require().NoError(err)
-		s.ElementsMatch(expected, decodeJSONL[gorse.User](s.T(), out))
+		s.ElementsMatch(expected, decodeJSONLines[gorse.User](s.T(), out))
 	}
 }
 
-func (s *CLITestSuite) TestUserListPagination() {
+func (s *CLITestSuite) TestUserPagination() {
 	ctx := s.T().Context()
 	s.Require().NoError(s.master.DataClient.BatchInsertUsers(ctx, []data.User{
 		{UserId: "page-a", Comment: "first"},

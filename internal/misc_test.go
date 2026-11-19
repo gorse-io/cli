@@ -32,7 +32,7 @@ type CLITestSuite struct {
 	done   chan struct{}
 }
 
-func decodeJSONL[T any](t *testing.T, input string) []T {
+func decodeJSONLines[T any](t *testing.T, input string) []T {
 	t.Helper()
 	decoder := json.NewDecoder(strings.NewReader(input))
 	var records []T
