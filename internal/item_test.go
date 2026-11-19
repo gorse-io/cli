@@ -2,6 +2,8 @@ package internal
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,15 +20,48 @@ func (s *CLITestSuite) TestCategories() {
 	}))
 	out, err := s.Command("item", "categories")
 	s.Require().NoError(err)
-	s.EqualTable([][]string{{"INDEX", "VALUE"}, {"0", "news"}, {"1", "tech"}}, out)
+	s.EqualTable([][]string{
+		{"INDEX", "VALUE"},
+		{"0", "news"},
+		{"1", "tech"},
+	}, out)
 }
 
 func (s *CLITestSuite) TestItemImportExport() {
 	_, err := s.Command("item", "add", "bulk-item-a", "--comment", "old comment")
 	s.Require().NoError(err)
-	testImportExport[gorse.Item](s, "item", "2 items imported\n", `{"ItemId":"bulk-item-a","IsHidden":true,"Categories":["news","tech"],"Timestamp":"2026-01-02T03:04:05Z","Labels":{"embedding":[0.1,0.2],"genre":"science"},"Comment":"物品 A"}
+	input := `{"ItemId":"bulk-item-a","IsHidden":true,"Categories":["news","tech"],"Timestamp":"2026-01-02T03:04:05Z","Labels":{"embedding":[0.1,0.2],"genre":"science"},"Comment":"物品 A"}
 {"ItemId":"bulk-item-b","IsHidden":false,"Categories":[],"Timestamp":"2026-02-03T04:05:06Z","Labels":{},"Comment":"Item B"}
-`)
+`
+	expected := decodeJSONL[gorse.Item](s.T(), input)
+	dir := s.T().TempDir()
+	inputPath := filepath.Join(dir, "import data.jsonl")
+	outputPath := filepath.Join(dir, "export data.jsonl")
+	s.Require().NoError(os.WriteFile(inputPath, []byte(input), 0o600))
+	out, err := s.Command("item", "import", inputPath)
+	s.Require().NoError(err)
+	s.Equal("2 items imported\n", out)
+	out, err = s.Command("item", "export", outputPath)
+	s.Require().NoError(err)
+	s.Contains(out, "Data exported to "+outputPath)
+	content, err := os.ReadFile(outputPath)
+	s.Require().NoError(err)
+	s.ElementsMatch(expected, decodeJSONL[gorse.Item](s.T(), string(content)))
+
+	defer s.root.SetIn(nil)
+	for _, flags := range [][]string{{"-"}, nil} {
+		s.Require().NoError(s.master.DataClient.Purge())
+		out, err = s.Command("item", "export")
+		s.Require().NoError(err)
+		s.Empty(out)
+		s.root.SetIn(strings.NewReader(string(content)))
+		out, err = s.Command(append([]string{"item", "import"}, flags...)...)
+		s.Require().NoError(err)
+		s.Equal("2 items imported\n", out)
+		out, err = s.Command(append([]string{"item", "export"}, flags...)...)
+		s.Require().NoError(err)
+		s.ElementsMatch(expected, decodeJSONL[gorse.Item](s.T(), out))
+	}
 }
 
 func (s *CLITestSuite) TestItemListPagination() {
@@ -37,10 +72,10 @@ func (s *CLITestSuite) TestItemListPagination() {
 		{ItemId: "page-b", Comment: "second", Timestamp: timestamp},
 		{ItemId: "page-c", Comment: "third", Timestamp: timestamp},
 	}))
-	header := []string{"ITEM-ID", "COMMENT", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS"}
-	first := []string{"page-a", "first", "[]", "false", timestamp.Format(time.RFC3339), ""}
-	second := []string{"page-b", "second", "[]", "false", timestamp.Format(time.RFC3339), ""}
-	third := []string{"page-c", "third", "[]", "false", timestamp.Format(time.RFC3339), ""}
+	header := []string{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT"}
+	first := []string{"page-a", "[]", "false", timestamp.Format(time.RFC3339), "", "first"}
+	second := []string{"page-b", "[]", "false", timestamp.Format(time.RFC3339), "", "second"}
+	third := []string{"page-c", "[]", "false", timestamp.Format(time.RFC3339), "", "third"}
 	cursor, _, err := s.master.DataClient.GetItems(ctx, "", 2, nil)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(cursor)
@@ -48,21 +83,35 @@ func (s *CLITestSuite) TestItemListPagination() {
 	s.Require().NoError(err)
 	table, next, found := strings.Cut(out, "\nNext page: ")
 	s.Require().True(found)
-	s.EqualTable([][]string{header, first, second}, table)
-	s.Equal(fmt.Sprintf("gorse-cli item list -n 2 --cursor '%s'\n", cursor), next)
+	s.EqualTable([][]string{
+		header,
+		first,
+		second,
+	}, table)
+	s.Equal(fmt.Sprintf("gorse-cli item list -n 2 --cursor %s\n", cursor), next)
 
 	out, err = s.Command("item", "list", "-n", "2", "--cursor", cursor)
 	s.Require().NoError(err)
-	s.EqualTable([][]string{header, third}, out)
+	s.EqualTable([][]string{
+		header,
+		third,
+	}, out)
 	for _, flags := range [][]string{nil, {"-n", "0"}, {"-n", "3"}} {
 		out, err = s.Command(append([]string{"item", "list"}, flags...)...)
 		s.Require().NoError(err)
-		s.EqualTable([][]string{header, first, second, third}, out)
+		s.EqualTable([][]string{
+			header,
+			first,
+			second,
+			third,
+		}, out)
 	}
 	s.Require().NoError(s.master.DataClient.Purge())
 	out, err = s.Command("item", "list")
 	s.Require().NoError(err)
-	s.EqualTable([][]string{header}, out)
+	s.EqualTable([][]string{
+		header,
+	}, out)
 }
 
 func (s *CLITestSuite) TestItemUpdate() {
@@ -192,9 +241,9 @@ Labels:
 `, out)
 
 	expected := [][]string{
-		{"ITEM-ID", "COMMENT", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS"},
-		{"added-item", "new item", `["news","tech"]`, "true", "2026-01-02T03:04:05Z", `{"embedding":[0.1,0.2],"genre":"science"}`},
-		{"minimal-item", "", "[]", "false", item.Timestamp.Format(time.RFC3339), "{}"},
+		{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT"},
+		{"added-item", `["news","tech"]`, "true", "2026-01-02T03:04:05Z", `{"embedding":[0.1,0.2],"genre":"science"}`, "new item"},
+		{"minimal-item", "[]", "false", item.Timestamp.Format(time.RFC3339), "{}", ""},
 	}
 	out, err = s.Command("item", "list", "-n", "1")
 	s.Require().NoError(err)

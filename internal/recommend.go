@@ -16,8 +16,12 @@ package internal
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"text/tabwriter"
+	"time"
 
+	"github.com/gorse-io/gorse/client"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
@@ -53,7 +57,7 @@ var recommendUserCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printArrayTable(cmd, recommendations)
+		printScoredItems(cmd.OutOrStdout(), recommendations)
 	},
 }
 
@@ -71,7 +75,7 @@ var getLatestCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printArrayTable(cmd, latest)
+		printScoredItems(cmd.OutOrStdout(), latest)
 	},
 }
 
@@ -90,7 +94,7 @@ var getNonPersonalizedCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printArrayTable(cmd, recommendations)
+		printScoredItems(cmd.OutOrStdout(), recommendations)
 	},
 }
 
@@ -109,7 +113,7 @@ var getItemToItemCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printArrayTable(cmd, recommendations)
+		printScoredItems(cmd.OutOrStdout(), recommendations)
 	},
 }
 
@@ -123,8 +127,25 @@ var getUserToUserCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		printArrayTable(cmd, recommendations)
+		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
+		fmt.Fprintln(table, "USER-ID\tLABELS\tCOMMENT\tSCORE")
+		for _, user := range recommendations {
+			fmt.Fprintf(table, "%s\t%s\t%s\t%s\n",
+				formatTableValue(user.UserId), formatTableLabels(user.Labels), formatTableValue(user.Comment), formatTableValue(user.Score))
+		}
+		lo.Must0(table.Flush())
 	},
+}
+
+func printScoredItems(output io.Writer, items []client.ScoredItem) {
+	table := tabwriter.NewWriter(output, 0, 8, 2, ' ', 0)
+	fmt.Fprintln(table, "ITEM-ID\tCATEGORIES\tIS-HIDDEN\tTIMESTAMP\tLABELS\tCOMMENT\tSCORE")
+	for _, item := range items {
+		fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\t%s\n",
+			formatTableValue(item.ItemId), formatTableValue(item.Categories), item.IsHidden,
+			item.Timestamp.Format(time.RFC3339), formatTableLabels(item.Labels), formatTableValue(item.Comment), formatTableValue(item.Score))
+	}
+	lo.Must0(table.Flush())
 }
 
 func init() {

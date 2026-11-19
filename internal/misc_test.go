@@ -47,39 +47,6 @@ func decodeJSONL[T any](t *testing.T, input string) []T {
 	}
 }
 
-func testImportExport[T any](s *CLITestSuite, resource, input string) {
-	s.T().Helper()
-	expected := decodeJSONL[T](s.T(), input)
-	dir := s.T().TempDir()
-	inputPath := filepath.Join(dir, "import data.jsonl")
-	outputPath := filepath.Join(dir, "export data.jsonl")
-	s.Require().NoError(os.WriteFile(inputPath, []byte(input), 0o600))
-	out, err := s.Command(resource, "import", inputPath)
-	s.Require().NoError(err)
-	s.Contains(out, "RowAffected: 2")
-	out, err = s.Command(resource, "export", outputPath)
-	s.Require().NoError(err)
-	s.Contains(out, "Data exported to "+outputPath)
-	content, err := os.ReadFile(outputPath)
-	s.Require().NoError(err)
-	s.ElementsMatch(expected, decodeJSONL[T](s.T(), string(content)))
-
-	defer s.root.SetIn(nil)
-	for _, flags := range [][]string{{"-"}, nil} {
-		s.Require().NoError(s.master.DataClient.Purge())
-		out, err = s.Command(resource, "export")
-		s.Require().NoError(err)
-		s.Empty(out)
-		s.root.SetIn(strings.NewReader(string(content)))
-		out, err = s.Command(append([]string{resource, "import"}, flags...)...)
-		s.Require().NoError(err)
-		s.Contains(out, "RowAffected: 2")
-		out, err = s.Command(append([]string{resource, "export"}, flags...)...)
-		s.Require().NoError(err)
-		s.ElementsMatch(expected, decodeJSONL[T](s.T(), out))
-	}
-}
-
 func TestCLI(t *testing.T) {
 	suite.Run(t, new(CLITestSuite))
 }
@@ -282,9 +249,19 @@ func (s *CLITestSuite) TestStats() {
 	out, err := s.Command("stats")
 	s.Require().NoError(err)
 	for _, line := range []string{
-		"BinaryVersion:", "NumServers: 0\n", "NumWorkers: 0\n", "NumUsers: 7\n", "NumItems: 11\n",
-		"NumUserLabels: 3\n", "NumItemLabels: 5\n", "NumTotalPosFeedback: 23\n",
-		"NumValidPosFeedback: 17\n", "NumValidNegFeedback: 2\n", "PopularItemsUpdateTime: 2026-01-02T03:04:05Z\n",
+		"BinaryVersion:          ",
+		"MatchingModelScore:\n{\n\t",
+		"NumItemLabels:          5\n",
+		"NumItems:               11\n",
+		"NumServers:             0\n",
+		"NumTotalPosFeedback:    23\n",
+		"NumUserLabels:          3\n",
+		"NumUsers:               7\n",
+		"NumValidNegFeedback:    2\n",
+		"NumValidPosFeedback:    17\n",
+		"NumWorkers:             0\n",
+		"PopularItemsUpdateTime: 2026-01-02T03:04:05Z\n",
+		"RankingModelScore:\n{\n\t",
 	} {
 		s.Contains(out, line)
 	}

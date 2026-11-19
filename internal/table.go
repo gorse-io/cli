@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -27,45 +26,12 @@ import (
 	"unicode"
 
 	"github.com/samber/lo"
-	"github.com/spf13/cobra"
 )
 
 const (
 	maxInlineArrayValues     = 8
 	maxTableLabelArrayValues = 3
 )
-
-func orderedKeys(keys []string, priority ...string) []string {
-	keySet := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		keySet[key] = struct{}{}
-	}
-	ordered := make([]string, 0, len(keys))
-	seen := make(map[string]struct{}, len(keys))
-	for _, key := range priority {
-		if _, ok := keySet[key]; ok {
-			ordered = append(ordered, key)
-			seen[key] = struct{}{}
-		}
-	}
-	remaining := make([]string, 0, len(keys)-len(ordered))
-	for _, key := range keys {
-		if _, ok := seen[key]; !ok {
-			remaining = append(remaining, key)
-		}
-	}
-	sort.Strings(remaining)
-	return append(ordered, remaining...)
-}
-
-func printJSONValue(output io.Writer, value any) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		fmt.Fprintln(output, formatTableValue(value))
-		return
-	}
-	fmt.Fprintln(output, string(encoded))
-}
 
 func summarizeLongArrays(value any) any {
 	return summarizeLongArraysWithLimit(value, maxInlineArrayValues)
@@ -130,113 +96,6 @@ func formatSummaryValue(value any) string {
 	return string(encoded)
 }
 
-func printArrayTable(cmd *cobra.Command, value any) {
-	array, ok := sliceValues(value)
-	if !ok {
-		printJSONValue(cmd.OutOrStdout(), value)
-		return
-	}
-	if len(array) == 0 {
-		printTable(cmd.OutOrStdout(), emptyArrayColumns(value), nil)
-		return
-	}
-	allObjects := true
-	columnsSet := make(map[string]struct{})
-	objectRows := make([]map[string]any, 0, len(array))
-	for _, element := range array {
-		object, ok := objectFields(element)
-		if !ok {
-			allObjects = false
-			break
-		}
-		objectRows = append(objectRows, object)
-		for column := range object {
-			columnsSet[column] = struct{}{}
-		}
-	}
-	if !allObjects {
-		rows := make([][]string, len(array))
-		for i, element := range array {
-			rows[i] = []string{strconv.Itoa(i), formatTableValue(element)}
-		}
-		printTable(cmd.OutOrStdout(), []string{"Index", "Value"}, rows)
-		return
-	}
-	columns := make([]string, 0, len(columnsSet))
-	for column := range columnsSet {
-		columns = append(columns, column)
-	}
-	columns = orderedArrayColumns(columns)
-	rows := make([][]string, len(objectRows))
-	for i, object := range objectRows {
-		row := make([]string, len(columns))
-		for j, column := range columns {
-			row[j] = formatTableCellValue(column, object[column])
-		}
-		rows[i] = row
-	}
-	printTable(cmd.OutOrStdout(), columns, rows)
-}
-
-func emptyArrayColumns(value any) []string {
-	columns, ok := arrayElementObjectColumns(value)
-	if !ok {
-		return []string{"Index", "Value"}
-	}
-	return orderedArrayColumns(columns)
-}
-
-func arrayElementObjectColumns(value any) ([]string, bool) {
-	v := indirectValue(reflect.ValueOf(value))
-	if !v.IsValid() || (v.Kind() != reflect.Slice && v.Kind() != reflect.Array) {
-		return nil, false
-	}
-	elementType := indirectType(v.Type().Elem())
-	if elementType == nil || elementType.Kind() != reflect.Struct || elementType == reflect.TypeOf(time.Time{}) {
-		return nil, false
-	}
-	columns := objectColumnsFromType(elementType)
-	if len(columns) == 0 {
-		return nil, false
-	}
-	return columns, true
-}
-
-func objectColumnsFromType(t reflect.Type) []string {
-	columnsSet := make(map[string]struct{})
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if field.PkgPath != "" && !field.Anonymous {
-			continue
-		}
-		if field.Anonymous {
-			fieldType := indirectType(field.Type)
-			if fieldType != nil && fieldType.Kind() == reflect.Struct && fieldType != reflect.TypeOf(time.Time{}) {
-				for _, column := range objectColumnsFromType(fieldType) {
-					columnsSet[column] = struct{}{}
-				}
-				continue
-			}
-		}
-		columnsSet[field.Name] = struct{}{}
-	}
-	columns := make([]string, 0, len(columnsSet))
-	for column := range columnsSet {
-		columns = append(columns, column)
-	}
-	return columns
-}
-
-func orderedArrayColumns(columns []string) []string {
-	if lo.Contains(columns, "FeedbackType") {
-		return orderedKeys(columns, "FeedbackType", "UserId", "ItemId", "Value", "Timestamp", "Comment", "Updated")
-	}
-	if lo.Contains(columns, "Progress") {
-		return orderedKeys(columns, "Tracer", "Name", "Status", "Progress", "Error", "StartTime", "FinishTime")
-	}
-	return orderedKeys(columns, "UserId", "ItemId", "Comment", "Categories", "IsHidden", "Timestamp")
-}
-
 func formatProgressBar(count, total int) string {
 	const width = 20
 	if count < 0 {
@@ -263,10 +122,7 @@ func formatProgressBar(count, total int) string {
 		percent)
 }
 
-func formatTableCellValue(column string, value any) string {
-	if column != "Labels" {
-		return formatTableValue(value)
-	}
+func formatTableLabels(value any) string {
 	if _, ok := sliceValues(value); ok || isObjectValue(value) {
 		encoded, err := json.Marshal(summarizeLongArraysWithLimit(value, maxTableLabelArrayValues))
 		if err != nil {
@@ -431,13 +287,6 @@ func indirectValue(v reflect.Value) reflect.Value {
 		v = v.Elem()
 	}
 	return v
-}
-
-func indirectType(t reflect.Type) reflect.Type {
-	for t != nil && t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	return t
 }
 
 func printTable(output io.Writer, headers []string, rows [][]string) {

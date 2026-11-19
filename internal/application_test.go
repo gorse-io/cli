@@ -81,7 +81,10 @@ func (s *CLITestSuite) TestApplications() {
 	s.Equal("Name:		prod\nEndpoint:	http://localhost:8089\n", stdout)
 	stdout, err = s.Command("application", "list")
 	s.Require().NoError(err)
-	s.EqualTable([][]string{{"CURRENT", "NAME", "ENDPOINT"}, {"*", "prod", "http://localhost:8089"}}, stdout)
+	s.EqualTable([][]string{
+		{"CURRENT", "NAME", "ENDPOINT"},
+		{"*", "prod", "http://localhost:8089"},
+	}, stdout)
 
 	// Deleting the last application clears both the list and the current selection.
 	stdout, err = s.Command("application", "delete", "prod")

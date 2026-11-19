@@ -21,11 +21,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
-	gorse "github.com/gorse-io/gorse-go"
 	"github.com/gorse-io/gorse/client"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
@@ -140,51 +138,6 @@ var GetStatsCmd = &cobra.Command{
 	},
 }
 
-func importData(cmd *cobra.Command, args []string, resource string, importFunc func(io.Reader) (gorse.RowAffected, error)) error {
-	input := cmd.InOrStdin()
-	if len(args) > 0 && args[0] != "-" {
-		file, err := os.Open(args[0])
-		if err != nil {
-			return fmt.Errorf("failed to open import file: %w", err)
-		}
-		defer file.Close()
-		input = file
-	}
-	result, err := importFunc(input)
-	if err != nil {
-		return fmt.Errorf("API request failed: %w", err)
-	}
-	fmt.Fprintf(cmd.OutOrStdout(), "%d %s imported\n", result.RowAffected, resource)
-	return nil
-}
-
-func exportData(cmd *cobra.Command, args []string, exportFunc func(io.Writer) error) error {
-	if len(args) == 0 || args[0] == "-" {
-		if err := exportFunc(cmd.OutOrStdout()); err != nil {
-			return fmt.Errorf("failed to export data: %w", err)
-		}
-		return nil
-	}
-	path := args[0]
-	file, err := os.CreateTemp(filepath.Dir(path), ".gorse-export-*")
-	if err != nil {
-		return fmt.Errorf("failed to create export file: %w", err)
-	}
-	defer os.Remove(file.Name())
-	defer file.Close()
-	if err = exportFunc(file); err != nil {
-		return fmt.Errorf("failed to export data: %w", err)
-	}
-	if err = file.Close(); err != nil {
-		return fmt.Errorf("failed to close export file: %w", err)
-	}
-	if err = os.Rename(file.Name(), path); err != nil {
-		return fmt.Errorf("failed to save export file: %w", err)
-	}
-	_, err = fmt.Fprintln(cmd.OutOrStdout(), "Data exported to "+path)
-	return err
-}
-
 func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
 	endpoint, apiKey := getEndpointAndKey(cmd)
 	if endpoint == "" || apiKey == "" {
@@ -227,22 +180,19 @@ func requireEndpointAndKey(cmd *cobra.Command) (string, string) {
 	return endpoint, apiKey
 }
 
-func printNextPage(cmd *cobra.Command, cursor string, n int) {
+func nextPage(cmd *cobra.Command, cursor string, n int) {
 	if cursor == "" {
 		return
 	}
-	quote := func(value string) string {
-		return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-	}
-	parts := []string{cmd.CommandPath(), "-n", fmt.Sprint(n), "--cursor", quote(cursor)}
+	parts := []string{cmd.CommandPath(), "-n", fmt.Sprint(n), "--cursor", cursor}
 	for _, name := range []string{"application", "endpoint"} {
 		if cmd.Flags().Changed(name) {
 			value, _ := cmd.Flags().GetString(name)
-			parts = append(parts, "--"+name, quote(value))
+			parts = append(parts, "--"+name, value)
 		}
 	}
 	if cmd.Flags().Changed("api-key") {
-		parts = append(parts, "--api-key", quote("<api-key>"))
+		parts = append(parts, "--api-key", "YOUR_API_KEY")
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "\nNext page: %s\n", strings.Join(parts, " "))
 }

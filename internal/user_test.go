@@ -2,6 +2,8 @@ package internal
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,9 +15,38 @@ import (
 func (s *CLITestSuite) TestUserImportExport() {
 	_, err := s.Command("user", "add", "bulk-user-a", "--comment", "old comment")
 	s.Require().NoError(err)
-	testImportExport[gorse.User](s, "user", "2 users imported\n", `{"UserId":"bulk-user-a","Labels":{"role":"reader"},"Comment":"用户 A"}
+	input := `{"UserId":"bulk-user-a","Labels":{"role":"reader"},"Comment":"用户 A"}
 {"UserId":"bulk-user-b","Labels":["writer"],"Comment":"User B"}
-`)
+`
+	expected := decodeJSONL[gorse.User](s.T(), input)
+	dir := s.T().TempDir()
+	inputPath := filepath.Join(dir, "import data.jsonl")
+	outputPath := filepath.Join(dir, "export data.jsonl")
+	s.Require().NoError(os.WriteFile(inputPath, []byte(input), 0o600))
+	out, err := s.Command("user", "import", inputPath)
+	s.Require().NoError(err)
+	s.Equal("2 users imported\n", out)
+	out, err = s.Command("user", "export", outputPath)
+	s.Require().NoError(err)
+	s.Contains(out, "Data exported to "+outputPath)
+	content, err := os.ReadFile(outputPath)
+	s.Require().NoError(err)
+	s.ElementsMatch(expected, decodeJSONL[gorse.User](s.T(), string(content)))
+
+	defer s.root.SetIn(nil)
+	for _, flags := range [][]string{{"-"}, nil} {
+		s.Require().NoError(s.master.DataClient.Purge())
+		out, err = s.Command("user", "export")
+		s.Require().NoError(err)
+		s.Empty(out)
+		s.root.SetIn(strings.NewReader(string(content)))
+		out, err = s.Command(append([]string{"user", "import"}, flags...)...)
+		s.Require().NoError(err)
+		s.Equal("2 users imported\n", out)
+		out, err = s.Command(append([]string{"user", "export"}, flags...)...)
+		s.Require().NoError(err)
+		s.ElementsMatch(expected, decodeJSONL[gorse.User](s.T(), out))
+	}
 }
 
 func (s *CLITestSuite) TestUserListPagination() {
@@ -32,21 +63,35 @@ func (s *CLITestSuite) TestUserListPagination() {
 	s.Require().NoError(err)
 	table, next, found := strings.Cut(out, "\nNext page: ")
 	s.Require().True(found)
-	s.EqualTable([][]string{{"USER-ID", "COMMENT", "LABELS"}, {"page-a", "first", ""}, {"page-b", "second", ""}}, table)
-	s.Equal(fmt.Sprintf("gorse-cli user list -n 2 --cursor '%s'\n", cursor), next)
+	s.EqualTable([][]string{
+		{"USER-ID", "LABELS", "COMMENT"},
+		{"page-a", "", "first"},
+		{"page-b", "", "second"},
+	}, table)
+	s.Equal(fmt.Sprintf("gorse-cli user list -n 2 --cursor %s\n", cursor), next)
 
 	out, err = s.Command("user", "list", "-n", "2", "--cursor", cursor)
 	s.Require().NoError(err)
-	s.EqualTable([][]string{{"USER-ID", "COMMENT", "LABELS"}, {"page-c", "third", ""}}, out)
+	s.EqualTable([][]string{
+		{"USER-ID", "LABELS", "COMMENT"},
+		{"page-c", "", "third"},
+	}, out)
 	for _, flags := range [][]string{nil, {"-n", "0"}, {"-n", "3"}} {
 		out, err = s.Command(append([]string{"user", "list"}, flags...)...)
 		s.Require().NoError(err)
-		s.EqualTable([][]string{{"USER-ID", "COMMENT", "LABELS"}, {"page-a", "first", ""}, {"page-b", "second", ""}, {"page-c", "third", ""}}, out)
+		s.EqualTable([][]string{
+			{"USER-ID", "LABELS", "COMMENT"},
+			{"page-a", "", "first"},
+			{"page-b", "", "second"},
+			{"page-c", "", "third"},
+		}, out)
 	}
 	s.Require().NoError(s.master.DataClient.Purge())
 	out, err = s.Command("user", "list")
 	s.Require().NoError(err)
-	s.EqualTable([][]string{{"USER-ID", "COMMENT", "LABELS"}}, out)
+	s.EqualTable([][]string{
+		{"USER-ID", "LABELS", "COMMENT"},
+	}, out)
 }
 
 func (s *CLITestSuite) TestUserUpdate() {
@@ -127,18 +172,18 @@ func (s *CLITestSuite) TestUser() {
 
 	out, err = s.Command("user", "get", "added-user")
 	s.Require().NoError(err)
-	s.Equal(`UserId: added-user
+	s.Equal(`UserId:  added-user
 Comment: new user
 Labels:
 {
-  "role": "reader"
+	"role": "reader"
 }
 `, out)
 
 	expected := [][]string{
-		{"USER-ID", "COMMENT", "LABELS"},
-		{"added-user", "new user", `{"role":"reader"}`},
-		{"minimal-user", "", "{}"},
+		{"USER-ID", "LABELS", "COMMENT"},
+		{"added-user", `{"role":"reader"}`, "new user"},
+		{"minimal-user", "{}", ""},
 	}
 	out, err = s.Command("user", "list", "-n", "1")
 	s.Require().NoError(err)

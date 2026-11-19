@@ -17,6 +17,7 @@ package internal
 import (
 	"fmt"
 	"os"
+	"text/tabwriter"
 	"time"
 
 	gorse "github.com/gorse-io/gorse-go"
@@ -55,7 +56,7 @@ var addFeedbackCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "%d feedback record added\n", result.RowAffected)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d feedback added\n", result.RowAffected)
 		return nil
 	},
 }
@@ -72,7 +73,7 @@ var deleteFeedbackCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "%d feedback record deleted\n", result.RowAffected)
+		fmt.Fprintf(cmd.OutOrStdout(), "%d feedback deleted\n", result.RowAffected)
 		return nil
 	},
 }
@@ -126,7 +127,15 @@ var getFeedbackCmd = &cobra.Command{
 		if n > 0 && n < len(feedback) {
 			feedback = feedback[:n]
 		}
-		printArrayTable(cmd, feedback)
+		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
+		fmt.Fprintln(table, "TIMESTAMP\tFEEDBACK-TYPE\tUSER-ID\tITEM-ID\tVALUE\tLABELS\tUPDATED\tCOMMENT")
+		for _, record := range feedback {
+			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				record.Timestamp.Format(time.RFC3339), formatTableValue(record.FeedbackType),
+				formatTableValue(record.UserId), formatTableValue(record.ItemId), formatTableValue(record.Value),
+				formatTableLabels(record.Labels), record.Updated.Format(time.RFC3339), formatTableValue(record.Comment))
+		}
+		lo.Must0(table.Flush())
 	},
 }
 
@@ -136,7 +145,22 @@ var importFeedbackCmd = &cobra.Command{
 	Long:  "Import JSONL records, replacing existing records with the same key. Completed server-side batches are not rolled back on failure.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return importData(cmd, args, "feedback records", newClient(cmd).ImportFeedback)
+		c := newClient(cmd)
+		input := cmd.InOrStdin()
+		if len(args) > 0 && args[0] != "-" {
+			file, err := os.Open(args[0])
+			if err != nil {
+				return fmt.Errorf("failed to open import file: %w", err)
+			}
+			defer file.Close()
+			input = file
+		}
+		result, err := c.ImportFeedback(input)
+		if err != nil {
+			return fmt.Errorf("API request failed: %w", err)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "%d feedback imported\n", result.RowAffected)
+		return nil
 	},
 }
 
@@ -145,7 +169,29 @@ var exportFeedbackCmd = &cobra.Command{
 	Short: "Export feedback as JSONL (default: stdout; use - for stdout)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return exportData(cmd, args, newClient(cmd).ExportFeedback)
+		c := newClient(cmd)
+		output := cmd.OutOrStdout()
+		if len(args) == 0 || args[0] == "-" {
+			if err := c.ExportFeedback(output); err != nil {
+				return fmt.Errorf("failed to export data: %w", err)
+			}
+			return nil
+		}
+		path := args[0]
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+		if err != nil {
+			return fmt.Errorf("failed to create export file: %w", err)
+		}
+		exportErr := c.ExportFeedback(file)
+		closeErr := file.Close()
+		if exportErr != nil {
+			return fmt.Errorf("failed to export data: %w", exportErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("failed to close export file: %w", closeErr)
+		}
+		_, err = fmt.Fprintln(output, "Data exported to "+path)
+		return err
 	},
 }
 
