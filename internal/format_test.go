@@ -15,6 +15,7 @@
 package internal
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"testing"
 
@@ -41,6 +42,28 @@ func TestFormatProgressBar(t *testing.T) {
 			require.Equal(t, tc.want, formatProgressBar(tc.count, tc.total))
 		})
 	}
+}
+
+type previewFloat float64
+
+func (value previewFloat) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return json.MarshalEncode(enc, []float64{float64(value), 2, 3})
+}
+
+func TestFormatJSONPreviewCustomElements(t *testing.T) {
+	value := []previewFloat{1, 4, 7}
+	for _, format := range []func(any) string{formatInlineJSON, formatIndentJSON} {
+		require.Equal(t, `[[1,2,3],[4,2,3],...]`, format(value))
+	}
+}
+
+func TestFormatJSONPreviewOmitempty(t *testing.T) {
+	value := struct {
+		Enabled bool      `json:"enabled"`
+		Vector  []float64 `json:"vector,omitempty"`
+	}{Enabled: true, Vector: []float64{1, 2, 3}}
+	require.Equal(t, `{"enabled":true,"vector":[1,2,...]}`, formatInlineJSON(value))
+	require.Equal(t, "{\n  \"enabled\": true,\n  \"vector\": [1,2,...]\n}", formatIndentJSON(value))
 }
 
 func TestFormatJSON(t *testing.T) {

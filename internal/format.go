@@ -126,10 +126,8 @@ func formatInlineJSON(value any) string {
 }
 
 func formatJSON(value any, options ...json.Options) string {
-	const placeholder = "true"
 	type preview struct {
-		offset int
-		values []byte
+		start, end int
 	}
 	var previews []preview
 	marshalPreview := json.MarshalToFunc(func(enc *jsontext.Encoder, value any) error {
@@ -141,15 +139,20 @@ func formatJSON(value any, options ...json.Options) string {
 		if !isLongFloatArray(array) {
 			return errors.ErrUnsupported
 		}
-		values, err := json.Marshal([]any{array.Index(0).Interface(), array.Index(1).Interface()})
-		if err != nil {
+		if err := enc.WriteToken(jsontext.BeginArray); err != nil {
 			return err
 		}
-		// A non-empty placeholder keeps fields tagged omitempty.
-		if err := enc.WriteToken(jsontext.True); err != nil {
+		start := int(enc.OutputOffset()) - 1
+		for i := 0; i < 2; i++ {
+			// Do not preview arrays emitted by an element's custom marshaler.
+			if err := json.MarshalEncode(enc, array.Index(i).Interface(), json.WithMarshalers(nil)); err != nil {
+				return err
+			}
+		}
+		if err := enc.WriteToken(jsontext.EndArray); err != nil {
 			return err
 		}
-		previews = append(previews, preview{int(enc.OutputOffset()) - len(placeholder), values})
+		previews = append(previews, preview{start, int(enc.OutputOffset())})
 		return nil
 	})
 	options = append(options, json.Deterministic(true), json.WithMarshalers(marshalPreview))
@@ -157,14 +160,16 @@ func formatJSON(value any, options ...json.Options) string {
 	if len(previews) == 0 {
 		return string(encoded)
 	}
-	// Replace only the placeholders emitted by the preview marshaler.
+	// Keep previews compact even in indented output, then append the ellipsis.
 	var output strings.Builder
 	start := 0
 	for _, preview := range previews {
-		output.Write(encoded[start:preview.offset])
-		output.Write(preview.values[:len(preview.values)-1])
+		output.Write(encoded[start:preview.start])
+		values := jsontext.Value(encoded[preview.start:preview.end]).Clone()
+		lo.Must0(values.Compact())
+		output.Write(values[:len(values)-1])
 		output.WriteString(",...]")
-		start = preview.offset + len(placeholder)
+		start = preview.end
 	}
 	output.Write(encoded[start:])
 	return output.String()
