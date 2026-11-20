@@ -20,10 +20,10 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	gorse "github.com/gorse-io/gorse-go"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
@@ -191,14 +191,14 @@ var listItemCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
-		fmt.Fprintln(table, "ITEM-ID\tCATEGORIES\tIS-HIDDEN\tTIMESTAMP\tLABELS\tCOMMENT")
+		t := table.NewWriter()
+		t.SetStyle(table.Style{Box: table.BoxStyle{PaddingRight: "  "}})
+		t.SuppressTrailingSpaces()
+		t.AppendHeader(table.Row{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT"})
 		for _, item := range items.Items {
-			fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\n",
-				item.ItemId, item.Categories, item.IsHidden,
-				formatTimestamp(item.Timestamp), formatInlineJSON(item.Labels), item.Comment)
+			t.AppendRow(table.Row{item.ItemId, fmt.Sprint(item.Categories), fmt.Sprint(item.IsHidden), formatTimestamp(item.Timestamp), formatInlineJSON(item.Labels), item.Comment})
 		}
-		if err := table.Flush(); err != nil {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), t.Render()); err != nil {
 			return err
 		}
 		if len(args) == 0 {

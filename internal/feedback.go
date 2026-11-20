@@ -18,11 +18,11 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"text/tabwriter"
 	"time"
 
 	gorse "github.com/gorse-io/gorse-go"
 	"github.com/gorse-io/gorse/client"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
@@ -130,15 +130,14 @@ var getFeedbackCmd = &cobra.Command{
 		if n > 0 && n < len(feedback) {
 			feedback = feedback[:n]
 		}
-		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
-		fmt.Fprintln(table, "TIMESTAMP\tFEEDBACK-TYPE\tUSER-ID\tITEM-ID\tVALUE\tLABELS\tUPDATED\tCOMMENT")
+		t := table.NewWriter()
+		t.SetStyle(table.Style{Box: table.BoxStyle{PaddingRight: "  "}})
+		t.SuppressTrailingSpaces()
+		t.AppendHeader(table.Row{"TIMESTAMP", "FEEDBACK-TYPE", "USER-ID", "ITEM-ID", "VALUE", "LABELS", "UPDATED", "COMMENT"})
 		for _, record := range feedback {
-			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%v\t%s\t%s\t%s\n",
-				formatTimestamp(record.Timestamp), record.FeedbackType,
-				record.UserId, record.ItemId, record.Value,
-				formatInlineJSON(record.Labels), formatTimestamp(record.Updated), record.Comment)
+			t.AppendRow(table.Row{formatTimestamp(record.Timestamp), record.FeedbackType, record.UserId, record.ItemId, fmt.Sprint(record.Value), formatInlineJSON(record.Labels), formatTimestamp(record.Updated), record.Comment})
 		}
-		lo.Must0(table.Flush())
+		lo.Must(fmt.Fprintln(cmd.OutOrStdout(), t.Render()))
 	},
 }
 

@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"text/tabwriter"
 
 	gorse "github.com/gorse-io/gorse-go"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
@@ -128,12 +128,14 @@ var listUserCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("API request failed: %w", err)
 		}
-		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
-		fmt.Fprintln(table, "USER-ID\tLABELS\tCOMMENT")
+		t := table.NewWriter()
+		t.SetStyle(table.Style{Box: table.BoxStyle{PaddingRight: "  "}})
+		t.SuppressTrailingSpaces()
+		t.AppendHeader(table.Row{"USER-ID", "LABELS", "COMMENT"})
 		for _, user := range users.Users {
-			fmt.Fprintf(table, "%s\t%s\t%s\n", user.UserId, formatInlineJSON(user.Labels), user.Comment)
+			t.AppendRow(table.Row{user.UserId, formatInlineJSON(user.Labels), user.Comment})
 		}
-		if err := table.Flush(); err != nil {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), t.Render()); err != nil {
 			return err
 		}
 		nextPage(cmd, users.Cursor, n)

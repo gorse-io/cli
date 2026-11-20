@@ -24,8 +24,8 @@ import (
 	"sort"
 	"strings"
 	"syscall"
-	"text/tabwriter"
 
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"github.com/zalando/go-keyring"
@@ -343,8 +343,10 @@ var applicationListCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: failed to read the current application from the system keyring: %v\n", err)
 			os.Exit(1)
 		}
-		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
-		fmt.Fprintln(table, "CURRENT\tNAME\tENDPOINT")
+		t := table.NewWriter()
+		t.SetStyle(table.Style{Box: table.BoxStyle{PaddingRight: "  "}})
+		t.SuppressTrailingSpaces()
+		t.AppendHeader(table.Row{"CURRENT", "NAME", "ENDPOINT"})
 		for _, name := range names {
 			app, err := applications.Get(name)
 			if err != nil {
@@ -355,9 +357,9 @@ var applicationListCmd = &cobra.Command{
 			if name == current {
 				currentMarker = "*"
 			}
-			fmt.Fprintf(table, "%s\t%s\t%s\n", currentMarker, name, app.Endpoint)
+			t.AppendRow(table.Row{currentMarker, name, app.Endpoint})
 		}
-		lo.Must0(table.Flush())
+		lo.Must(fmt.Fprintln(cmd.OutOrStdout(), t.Render()))
 	},
 }
 

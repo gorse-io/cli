@@ -129,7 +129,11 @@ func (s *CLITestSuite) EqualTable(expected [][]string, actual string) {
 		s.Require().NoError(err)
 	}
 	s.Require().NoError(table.Flush())
-	s.Equal(output.String(), actual)
+	lines := strings.Split(output.String(), "\n")
+	for i := range lines {
+		lines[i] = strings.TrimRight(lines[i], " ")
+	}
+	s.Equal(strings.Join(lines, "\n"), actual)
 }
 
 func (s *CLITestSuite) Command(args ...string) (string, error) {
