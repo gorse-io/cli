@@ -282,6 +282,8 @@ func readSecret(prompt string) (string, error) {
 }
 
 func init() {
+	applicationAddCmd.Flags().String("endpoint", "", "Gorse base URL to save (default: GORSE_ADMIN_ENDPOINT)")
+	applicationAddCmd.Flags().String("api-key", "", "Gorse admin API key to save (default: GORSE_ADMIN_API_KEY or prompt)")
 	ApplicationCmd.AddCommand(
 		applicationAddCmd,
 		applicationListCmd,

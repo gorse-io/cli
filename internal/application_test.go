@@ -18,6 +18,34 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+func (s *CLITestSuite) TestApplicationFlagScope() {
+	for _, args := range [][]string{
+		{"application", "--help"},
+		{"application", "list", "--help"},
+		{"application", "use", "--help"},
+		{"application", "delete", "--help"},
+		{"application", "current", "--help"},
+	} {
+		out, err := s.Command(args...)
+		s.Require().NoError(err)
+		for _, flag := range []string{"--endpoint", "--api-key", "--application"} {
+			s.NotContains(out, flag, args)
+		}
+	}
+	out, err := s.Command("application", "add", "--help")
+	s.Require().NoError(err)
+	s.Contains(out, "--endpoint")
+	s.Contains(out, "--api-key")
+	s.NotContains(out, "--application")
+	for _, command := range []string{"item", "user", "feedback", "stats", "recommend", "pipeline", "dump", "restore"} {
+		out, err := s.Command(command, "--help")
+		s.Require().NoError(err)
+		for _, flag := range []string{"--endpoint", "--api-key", "--application"} {
+			s.Contains(out, flag, command)
+		}
+	}
+}
+
 func (s *CLITestSuite) TestApplications() {
 	keyring.MockInit()
 

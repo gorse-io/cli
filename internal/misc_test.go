@@ -99,10 +99,15 @@ func (s *CLITestSuite) SetupSuite() {
 	t.Setenv("GORSE_ADMIN_ENDPOINT", endpoint)
 	t.Setenv("GORSE_ADMIN_API_KEY", "test-key")
 	s.root = &cobra.Command{Use: "gorse-cli", SilenceErrors: true, SilenceUsage: true}
-	s.root.PersistentFlags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
-	s.root.PersistentFlags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
-	s.root.PersistentFlags().String("application", "", "Gorse CLI application name")
 	s.root.AddCommand(ApplicationCmd, PipelineCmd, ItemCmd, UserCmd, FeedbackCmd, DumpCmd, RestoreCmd, GetStatsCmd, RecommendCmd)
+	for _, cmd := range s.root.Commands() {
+		if cmd == ApplicationCmd || cmd.PersistentFlags().Lookup("endpoint") != nil {
+			continue
+		}
+		cmd.PersistentFlags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
+		cmd.PersistentFlags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
+		cmd.PersistentFlags().String("application", "", "Gorse CLI application name")
+	}
 }
 
 func (s *CLITestSuite) TearDownTest() {
