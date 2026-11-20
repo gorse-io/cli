@@ -21,9 +21,6 @@ func main() {
 		},
 	}
 	rootCmd.PersistentFlags().BoolP("version", "v", false, "gorse-cli version")
-	rootCmd.PersistentFlags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
-	rootCmd.PersistentFlags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
-	rootCmd.PersistentFlags().String("application", "", "Gorse CLI application name")
 	rootCmd.AddCommand(
 		internal.ApplicationCmd,
 		internal.ItemCmd,
@@ -36,6 +33,14 @@ func main() {
 		internal.DumpCmd,
 		internal.RestoreCmd,
 	)
+	for _, cmd := range rootCmd.Commands() {
+		if cmd == internal.ApplicationCmd {
+			continue
+		}
+		cmd.PersistentFlags().String("endpoint", "", "Gorse base URL (default: selected application or GORSE_ADMIN_ENDPOINT)")
+		cmd.PersistentFlags().String("api-key", "", "Gorse admin API key (default: selected application or GORSE_ADMIN_API_KEY)")
+		cmd.PersistentFlags().String("application", "", "Gorse CLI application name")
+	}
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
