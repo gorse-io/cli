@@ -22,9 +22,9 @@ import (
 	"io"
 	"os"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/gorse-io/gorse/client"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
@@ -38,18 +38,18 @@ var PsCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
-		fmt.Fprintln(table, "NAME\tSTATUS\tPROGRESS\tSTART-TIME\tFINISH-TIME")
+		t := table.NewWriter()
+		t.SetStyle(table.Style{Box: table.BoxStyle{PaddingRight: "  "}})
+		t.SuppressTrailingSpaces()
+		t.AppendHeader(table.Row{"NAME", "STATUS", "PROGRESS", "START-TIME", "FINISH-TIME"})
 		for _, task := range tasks {
 			progress := task.Error
 			if progress == "" {
 				progress = formatProgressBar(task.Count, task.Total)
 			}
-			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n",
-				task.Name, task.Status, progress,
-				formatTimestamp(task.StartTime), formatTimestamp(task.FinishTime))
+			t.AppendRow(table.Row{task.Name, task.Status, progress, formatTimestamp(task.StartTime), formatTimestamp(task.FinishTime)})
 		}
-		lo.Must0(table.Flush())
+		lo.Must(fmt.Fprintln(cmd.OutOrStdout(), t.Render()))
 	},
 }
 

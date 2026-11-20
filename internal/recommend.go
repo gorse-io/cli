@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"text/tabwriter"
 
 	"github.com/gorse-io/gorse/client"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
@@ -126,25 +126,26 @@ var getUserToUserCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: admin API request failed: %v\n", err)
 			os.Exit(1)
 		}
-		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
-		fmt.Fprintln(table, "USER-ID\tLABELS\tCOMMENT\tSCORE")
+		t := table.NewWriter()
+		t.SetStyle(table.Style{Box: table.BoxStyle{PaddingRight: "  "}})
+		t.SuppressTrailingSpaces()
+		t.AppendHeader(table.Row{"USER-ID", "LABELS", "COMMENT", "SCORE"})
 		for _, user := range recommendations {
-			fmt.Fprintf(table, "%s\t%s\t%s\t%v\n",
-				user.UserId, formatInlineJSON(user.Labels), user.Comment, user.Score)
+			t.AppendRow(table.Row{user.UserId, formatInlineJSON(user.Labels), user.Comment, fmt.Sprint(user.Score)})
 		}
-		lo.Must0(table.Flush())
+		lo.Must(fmt.Fprintln(cmd.OutOrStdout(), t.Render()))
 	},
 }
 
 func printScoredItems(output io.Writer, items []client.ScoredItem) {
-	table := tabwriter.NewWriter(output, 0, 8, 2, ' ', 0)
-	fmt.Fprintln(table, "ITEM-ID\tCATEGORIES\tIS-HIDDEN\tTIMESTAMP\tLABELS\tCOMMENT\tSCORE")
+	t := table.NewWriter()
+	t.SetStyle(table.Style{Box: table.BoxStyle{PaddingRight: "  "}})
+	t.SuppressTrailingSpaces()
+	t.AppendHeader(table.Row{"ITEM-ID", "CATEGORIES", "IS-HIDDEN", "TIMESTAMP", "LABELS", "COMMENT", "SCORE"})
 	for _, item := range items {
-		fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\t%v\n",
-			item.ItemId, item.Categories, item.IsHidden,
-			formatTimestamp(item.Timestamp), formatInlineJSON(item.Labels), item.Comment, item.Score)
+		t.AppendRow(table.Row{item.ItemId, fmt.Sprint(item.Categories), fmt.Sprint(item.IsHidden), formatTimestamp(item.Timestamp), formatInlineJSON(item.Labels), item.Comment, fmt.Sprint(item.Score)})
 	}
-	lo.Must0(table.Flush())
+	lo.Must(fmt.Fprintln(output, t.Render()))
 }
 
 func init() {
